@@ -188,11 +188,13 @@ function DriverDetail({ id, onChange }: { id: string; onChange: () => void }) {
   const [tier, setTier] = useState('basic');
   const [cargo, setCargo] = useState('');
   const [reason, setReason] = useState('');
+  const [bgClear, setBgClear] = useState(false);
   const [msg, setMsg] = useState<string | null>(null);
   useEffect(() => {
     if (data) {
       setTier(data.driver.tier);
       setCargo(String(data.driver.cargoLimitCents / 100));
+      setBgClear(data.driver.backgroundStatus === 'clear');
     }
   }, [data]);
   if (error) return <p className="error">{error}</p>;
@@ -261,13 +263,15 @@ function DriverDetail({ id, onChange }: { id: string; onChange: () => void }) {
           <label className="grow">Reason / note <input id="reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Shown to the driver when rejecting or pausing" /></label>
         </div>
         <div className="row">
+          <label className="checkline"><input id="bg-clear" type="checkbox" checked={bgClear} onChange={(e) => setBgClear(e.target.checked)} /> Criminal record check reviewed and clear</label>
+          <button className="primary" id="approve" onClick={() => decide('approved', bgClear ? { backgroundStatus: 'clear' } : {})}>Approve</button>
           <button onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/background`, { status: 'clear' }))}>Background check: clear</button>
           <button className="danger" onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/background`, { status: 'failed' }))}>Background check: failed</button>
-          <button className="primary" onClick={() => decide('approved')}>Approve</button>
           <button onClick={() => decide('paused')}>Pause</button>
           <button className="danger" onClick={() => decide('rejected')}>Reject</button>
           <button onClick={() => act(() => api('POST', `/v1/admin/users/${id}/block`, { blocked: true }))}>Block account</button>
         </div>
+        <p className="small">Background check: <b>{d.backgroundStatus}</b></p>
         <p className="small muted">Pro: commercial auto policy + cargo policy, 50+ jobs, rating 4.8+. The cargo limit should not exceed the cargo policy.</p>
         {msg ? <p className={msg === 'Saved' ? 'ok' : 'error'}>{msg}</p> : null}
       </div>

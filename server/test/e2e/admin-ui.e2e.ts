@@ -84,11 +84,10 @@ test('admin reviews documents and approves the driver as Pro', async () => {
   const img = page.locator('.doc img').first();
   await img.waitFor();
   assert.ok(await img.evaluate((el) => (el as { complete: boolean }).complete));
-  await page.click('button:has-text("Background check: clear")');
-  await page.locator('.checks li.done', { hasText: 'Background check clear' }).waitFor();
   await page.selectOption('#tier', 'pro');
   await page.fill('#cargo', '10000');
-  await page.click('button:has-text("Approve")');
+  await page.check('#bg-clear');
+  await page.click('#approve');
   await page.locator('h2 .pill', { hasText: 'approved' }).waitFor();
   await shot('2-driver');
   const d = await (await signIn(app, ADMIN_PHONE)).api.get(`/v1/admin/drivers/${driverId}`);
