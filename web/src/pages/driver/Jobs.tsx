@@ -113,6 +113,7 @@ function JobPage({ id }: { id: string }) {
             <Card hl={e.canTake}>
               {e.lockReason === 'pro_window' && e.opensAt ? <Notice>{t('lockedPro', { left: '' })} <Countdown to={e.opensAt} now={now} /></Notice> : null}
               {e.lockReason === 'cargo_limit' ? <Notice tone="bad">{t('lockedCargo')}</Notice> : null}
+              {e.sizeWarning ? <Notice>{t('sizeWarn')}</Notice> : null}
               {e.canTake ? (
                 <>
                   <div className="row between"><span className="muted">{t('youGet')}</span><b className="money big">{money(net(o.priceCents))}</b></div>

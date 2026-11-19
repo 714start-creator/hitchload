@@ -1,5 +1,5 @@
 // Driver home: status, quick links, active jobs and loads available to this driver.
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { api } from '../../lib/api';
 import { Link, useApp, useLoad, useNow } from '../../lib/app';
 import { money, windowText } from '../../lib/format';
@@ -68,11 +68,28 @@ function Feed() {
       </div>
       {feed.loading && !feed.data ? <Loading /> : null}
       <ErrorBox error={feed.error} onRetry={feed.reload} />
-      {feed.data && feed.data.items.length === 0 ? <Empty>{t('feedEmpty')} <Link to="/driver/trips">{t('newTrip')}</Link></Empty> : null}
-      <div className="grid-cards">
-        {feed.data?.items.map((o) => <LoadCard key={o.id} o={o} />)}
-      </div>
+      {feed.data ? <FeedTabs items={feed.data.items} /> : null}
     </div>
+  );
+}
+
+function FeedTabs({ items }: { items: Order[] }) {
+  const { t } = useApp();
+  const onWay = items.filter((o) => o.eligibility?.onMyTrip || o.eligibility?.requestedToMe);
+  const rest = items.filter((o) => !(o.eligibility?.onMyTrip || o.eligibility?.requestedToMe));
+  const [tab, setTab] = useState<'way' | 'all'>(onWay.length ? 'way' : 'all');
+  const list = tab === 'way' ? onWay : rest;
+  return (
+    <>
+      <div className="tabs" role="tablist">
+        <button role="tab" id="tab-way" aria-selected={tab === 'way'} onClick={() => setTab('way')}>{t('loadsOnWay')} ({onWay.length})</button>
+        <button role="tab" id="tab-all" aria-selected={tab === 'all'} onClick={() => setTab('all')}>{t('allLoads')} ({rest.length})</button>
+      </div>
+      {list.length === 0 ? <Empty>{tab === 'way' ? <>{t('onWayEmpty')} <Link to="/driver/trips">{t('newTrip')}</Link></> : t('feedEmpty')}</Empty> : null}
+      <div className="grid-cards">
+        {list.map((o) => <LoadCard key={o.id} o={o} />)}
+      </div>
+    </>
   );
 }
 
@@ -85,7 +102,7 @@ export function LoadCard({ o, eta, fitsWindow }: { o: Order; eta?: string; fitsW
     <Link to={`/driver/jobs/${o.id}`} className={`card link-card ${e?.requestedToMe || e?.onMyTrip ? 'hl' : ''}`}>
       <div className="row between">
         <span className="row">
-          {e?.requestedToMe ? <Pill tone="wait">{t('requestedToYou')}</Pill> : e?.onMyTrip ? <Pill tone="go">{t('onMyTrip')}</Pill> : null}
+          {e?.requestedToMe ? <Pill tone="wait">{t('requestedToYou')}</Pill> : e?.onMyTrip ? <Pill tone="go">{t('onMyTrip')}</Pill> : e?.near ? <Pill>{t('nearYou')}</Pill> : null}
           <span className="small muted">{o.intercity ? `${t('intercity')} · ${o.distanceKm} km` : t('local')} · {t(`size${o.size}`)}</span>
         </span>
         {e?.distanceToPickupKm !== null && e?.distanceToPickupKm !== undefined ? <span className="small muted">{t('kmAway', { km: e.distanceToPickupKm })}</span> : null}
@@ -99,6 +116,7 @@ export function LoadCard({ o, eta, fitsWindow }: { o: Order; eta?: string; fitsW
       </div>
       {e?.lockReason === 'pro_window' && e.opensAt ? <Notice>{t('lockedPro', { left: '' })} <Countdown to={e.opensAt} now={now} /></Notice> : null}
       {e?.lockReason === 'cargo_limit' ? <Notice tone="bad">{t('lockedCargo')}</Notice> : null}
+      {e?.sizeWarning ? <Notice>{t('sizeWarn')}</Notice> : null}
     </Link>
   );
 }

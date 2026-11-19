@@ -313,11 +313,17 @@ test('cargo limits: Basic cannot take a $2,500 fridge unless the customer insure
   await anna.api.post(`/v1/orders/${o2.id}/cancel`);
 });
 
-test('drivers outside the area do not see the order; strangers cannot read it', async () => {
+test('far-away orders: any driver may see and take them, but only nearby drivers are notified; strangers cannot read them', async () => {
+  app.pushes.length = 0;
   const o = await anna.api.post('/v1/orders', { pickup: places.saskatoon, dropoff: { ...places.saskatoon, address: '100 3rd Ave S', lat: 52.124, lng: -106.664 }, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(2), windowEnd: hours(4) });
+  assert.ok(!app.pushes.some((p) => p.to === 'ExponentPushToken[pro]' && p.data?.orderId === o.id), 'an Edmonton driver is not notified about Saskatoon');
   const feed = await pro.api.get('/v1/driver/feed');
-  assert.ok(!feed.items.some((i: { id: string }) => i.id === o.id));
-  await expectError(pro.api.get(`/v1/driver/orders/${o.id}`), 404);
+  const item = feed.items.find((i: { id: string }) => i.id === o.id);
+  assert.ok(item, 'listed under all loads');
+  assert.equal(item.eligibility.near, false);
+  assert.equal(item.eligibility.onMyTrip, false);
+  assert.equal(item.eligibility.canTake, true);
+  assert.equal((await pro.api.get(`/v1/driver/orders/${o.id}`)).id, o.id);
   await expectError(basic.api.get(`/v1/orders/${o.id}`), 404);
   await expectError(client(app.url).get(`/v1/orders/${o.id}`), 401);
 });

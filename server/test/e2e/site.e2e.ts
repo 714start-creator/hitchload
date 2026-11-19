@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import { onboardDriver, startTestApp, type TestApp } from '../helpers.js';
+import { customer, onboardDriver, places, startTestApp, type TestApp } from '../helpers.js';
 
 let app: TestApp;
 let browser: Browser;
@@ -168,6 +168,26 @@ test('driver posts a trip; the customer with a matching alert is notified', asyn
   await shipper.locator('.note', { hasText: 'New driver on your route' }).click();
   await shipper.waitForURL(/\/send\?from=Edmonton%2C\+AB&to=Calgary%2C\+AB&trip=/);
   await shipper.locator('.trip.hl').first().waitFor();
+});
+
+test('driver: a trip around one city, loads split into "On your way" and "All loads", any load can be taken', async () => {
+  await driverPage.goto(app.url + '/driver/trips');
+  await driverPage.fill('#stop-0', 'Edmonton, AB');
+  await driverPage.fill('#stop-1', 'Edmonton, AB');
+  await driverPage.click('#publish-trip');
+  await driverPage.getByText(/Trip posted\./).waitFor();
+  const far = await customer(app, '7805550888', 'Sam Far');
+  const o = await far.api.post('/v1/orders', { pickup: places.saskatoon, dropoff: { ...places.saskatoon, address: '100 3rd Ave S', lat: 52.124, lng: -106.664 }, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(1), windowEnd: hours(8), priceCents: 2500 });
+  const local = await far.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(1), windowEnd: hours(8), priceCents: 3000 });
+  app.advance(5 * 60_000); // past the Pro window for city orders
+  await driverPage.goto(app.url + '/driver');
+  await driverPage.locator('#tab-way').waitFor();
+  await driverPage.locator(`a[href="/driver/jobs/${local.id}"]`).waitFor();
+  await driverPage.click('#tab-all');
+  await driverPage.locator(`a[href="/driver/jobs/${o.id}"]`).click();
+  await driverPage.click('#take');
+  await driverPage.locator('.pill', { hasText: 'Driver confirmed' }).waitFor();
+  await shot(driverPage, 'site-7b-feed-take-far');
 });
 
 test('email confirmation link from the account page', async () => {

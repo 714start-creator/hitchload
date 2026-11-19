@@ -159,6 +159,14 @@ test('public load board shows cities, size, window and price, never addresses or
   assert.equal(site.brand, 'Hitchload');
 });
 
+test('a trip around one city (Edmonton → Edmonton) is allowed and finds local loads', async () => {
+  const local = await customer(app, '7805550901', 'Ira Local');
+  const o = await local.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'M', declaredValueCents: 1000, insured: false, windowStart: hours(1), windowEnd: hours(10), priceCents: 4000 });
+  const t = await mike.api.post('/v1/driver/trips', { stops: [{ city: 'Edmonton', province: 'AB' }, { city: 'Edmonton', province: 'AB' }], departAt: hours(2) });
+  const loads = await mike.api.get(`/v1/driver/trips/${t.id}/loads`);
+  assert.ok(loads.items.some((i: { id: string }) => i.id === o.id));
+});
+
 test('browser push: subscribe, receive, unsubscribe', async () => {
   const ua = createECDH('prime256v1');
   ua.generateKeys();

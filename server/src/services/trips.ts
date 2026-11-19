@@ -52,7 +52,7 @@ export async function createTrip(ctx: Ctx, userId: string, p: z.infer<typeof tri
     if (!c) throw bad('unknown_city', `Unknown city: ${s.city}`);
     return c;
   });
-  for (let i = 1; i < stops.length; i++) if (stops[i]!.city === stops[i - 1]!.city) throw bad('duplicate_stop', 'Two stops in a row are the same city');
+  // the same city twice in a row is allowed: a trip around town (Edmonton → Edmonton) carries local loads
   const vehicles = await ctx.db.query<{ id: string; max_size: Size }>('SELECT id, max_size FROM vehicles WHERE driver_id = $1 AND active', [userId]);
   const vehicle = p.vehicleId ? vehicles.find((v) => v.id === p.vehicleId) : vehicles[0];
   if (!vehicle) throw bad('no_vehicle', 'Add a vehicle first');

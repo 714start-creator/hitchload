@@ -106,6 +106,8 @@ export interface Eligibility {
   opensAt?: string;
   requestedToMe: boolean;
   onMyTrip: boolean;
+  near?: boolean;
+  sizeWarning?: boolean;
   distanceToPickupKm: number | null;
 }
 

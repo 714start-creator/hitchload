@@ -16,6 +16,10 @@ export interface Eligibility {
   opensAt?: string;
   requestedToMe: boolean;
   onMyTrip: boolean;
+  /** pickup within the driver's local radius */
+  near: boolean;
+  /** item is bigger than the driver's vehicles (shown as a warning; the driver decides) */
+  sizeWarning: boolean;
   distanceToPickupKm: number | null;
 }
 
@@ -35,13 +39,13 @@ export async function loadDriverContext(q: Queryable, userId: string): Promise<D
 
 export function evaluate(ctx: Ctx, o: OrderRow, dc: DriverContext, now = ctx.now()): Eligibility {
   const d = dc.driver;
-  const no: Eligibility = { visible: false, canTake: false, requestedToMe: false, onMyTrip: false, distanceToPickupKm: null };
+  const no: Eligibility = { visible: false, canTake: false, requestedToMe: false, onMyTrip: false, near: false, sizeWarning: false, distanceToPickupKm: null };
   if (o.status !== 'open' || d.status !== 'approved' || o.client_id === d.user_id) return no;
   const requestActive = o.requested_driver_id && o.request_expires_at && new Date(o.request_expires_at) > now;
   const requestedToMe = Boolean(requestActive && o.requested_driver_id === d.user_id);
   if (requestActive && !requestedToMe) return no;
-  if (!dc.vehicleSizes.some((s) => sizeFits(o.size, s))) return no;
-  if (o.size === 'AUTO' && !d.car_hauler) return no;
+  // any approved driver may take any open order; size is a warning, not a lock
+  const sizeWarning = !dc.vehicleSizes.some((s) => sizeFits(o.size, s)) || (o.size === 'AUTO' && !d.car_hauler);
 
   const r = ctx.cfg.rules;
   const here: Point | null = d.last_lat !== null && d.last_lng !== null && d.last_seen_at && now.getTime() - new Date(d.last_seen_at).getTime() < 3 * 3_600_000
@@ -50,9 +54,8 @@ export function evaluate(ctx: Ctx, o: OrderRow, dc: DriverContext, now = ctx.now
   const distanceToPickupKm = here ? Math.round(haversineKm(here, o.pickup)) : null;
   const onMyTrip = dc.trips.some((t) => matchRoute(t.stops, o.pickup, o.dropoff, r.stopMatchKm, r.roadFactor) !== null);
   const near = distanceToPickupKm !== null && distanceToPickupKm <= d.radius_km;
-  if (!requestedToMe && !near && !onMyTrip) return no;
 
-  const base = { visible: true, requestedToMe, onMyTrip, distanceToPickupKm };
+  const base = { visible: true, requestedToMe, onMyTrip, near, sizeWarning, distanceToPickupKm };
   if (o.declared_value_cents > cargoLimitCents({ tier: d.tier, cargoLimitCents: d.cargo_limit_cents }, o.insured, r)) return { ...base, canTake: false, lockReason: 'cargo_limit' };
   if (!requestedToMe && d.tier !== 'pro' && now < new Date(o.pro_until)) return { ...base, canTake: false, lockReason: 'pro_window', opensAt: o.pro_until };
   return { ...base, canTake: true };
@@ -72,7 +75,8 @@ export async function dispatchOrder(ctx: Ctx, o: OrderRow, phase: 'pro' | 'basic
     if (!dc) continue;
     // evaluate as if the Pro window were over, so basic drivers are matched in the 'basic' phase
     const e = evaluate(ctx, { ...o, pro_until: phase === 'pro' ? o.pro_until : new Date(0).toISOString() }, dc);
-    if (!e.visible || e.lockReason === 'cargo_limit') continue;
+    // everyone can see every open order, but only drivers nearby or with a matching trip are notified
+    if (!e.visible || e.lockReason === 'cargo_limit' || e.sizeWarning || (!e.near && !e.onMyTrip && !e.requestedToMe)) continue;
     const r = ctx.cfg.rules;
     const trip = e.onMyTrip ? dc.trips.find((t) => matchRoute(t.stops, o.pickup, o.dropoff, r.stopMatchKm, r.roadFactor)) : undefined;
     if (trip) {

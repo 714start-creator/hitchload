@@ -216,8 +216,8 @@ export async function driverFeed(ctx: Ctx, driverId: string) {
   const items = rows
     .map((o) => ({ o, e: evaluate(ctx, o, dc) }))
     .filter((x) => x.e.visible)
-    .sort((a, b) => Number(b.e.requestedToMe) - Number(a.e.requestedToMe) || Number(b.e.onMyTrip) - Number(a.e.onMyTrip) || (a.e.distanceToPickupKm ?? 1e9) - (b.e.distanceToPickupKm ?? 1e9))
-    .slice(0, 100)
+    .sort((a, b) => Number(b.e.requestedToMe) - Number(a.e.requestedToMe) || Number(b.e.onMyTrip) - Number(a.e.onMyTrip) || Number(b.e.near) - Number(a.e.near) || (a.e.distanceToPickupKm ?? 1e9) - (b.e.distanceToPickupKm ?? 1e9))
+    .slice(0, 300)
     .map(({ o, e }) => ({ ...orderDto(o, 'prospect', { offers: offers.filter((f) => f.order_id === o.id), urls: (k) => ctx.storage.url(k) }), eligibility: e }));
   return { status: dc.driver.status, tier: dc.driver.tier, items };
 }
