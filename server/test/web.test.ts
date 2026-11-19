@@ -208,3 +208,15 @@ test('web push encryption (RFC 8291) decrypts on the receiving side; VAPID signa
   const key = createPublicKey({ key: { kty: 'EC', crv: 'P-256', x: pub.subarray(1, 33).toString('base64url'), y: pub.subarray(33).toString('base64url') }, format: 'jwk' });
   assert.ok(verify('sha256', Buffer.from(`${m[1]}.${m[2]}`), { key, dsaEncoding: 'ieee-p1363' }, Buffer.from(m[3]!, 'base64url')));
 });
+
+test('database file storage (test servers without S3): put, signed read, bad signature', async () => {
+  const { createDbStorage } = await import('../src/providers/storage.js');
+  const st = createDbStorage(app.ctx.db, 'https://example.test', 'secret');
+  const body = Buffer.from(Array.from({ length: 5000 }, (_, i) => i % 256));
+  await st.put('u/x/document/a.jpg', body, 'image/jpeg');
+  const u = new URL(st.url('u/x/document/a.jpg'));
+  const back = await st.readLocal!('u/x/document/a.jpg', u.searchParams.get('exp')!, u.searchParams.get('sig')!);
+  assert.deepEqual(back, body);
+  assert.equal(await st.readLocal!('u/x/document/a.jpg', u.searchParams.get('exp')!, 'forged'), null);
+  assert.equal(await st.readLocal!('u/x/document/missing.jpg', u.searchParams.get('exp')!, u.searchParams.get('sig')!), null);
+});

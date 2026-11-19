@@ -11,7 +11,7 @@ import { createLogEmail, createPostmarkEmail, createResendEmail, type Email } fr
 import { createFakePayments, createStripePayments, type Payments } from './providers/payments.js';
 import { createExpoPush, createLogPush, type Push } from './providers/push.js';
 import { createLocalSms, createTwilioSms, type Sms } from './providers/sms.js';
-import { createLocalStorage, createS3Storage, type Storage } from './providers/storage.js';
+import { createDbStorage, createLocalStorage, createS3Storage, type Storage } from './providers/storage.js';
 import { createLogWebPush, createVapidPush, type WebPush } from './providers/webpush.js';
 import { buildRouter } from './routes.js';
 import { authenticate } from './services/users.js';
@@ -39,6 +39,8 @@ export function createContext(cfg: Config, db: Db, o: AppOverrides = {}): Ctx {
   const s = cfg.storage;
   const storage = o.storage ?? (s.bucket && s.accessKeyId && s.secretAccessKey
     ? createS3Storage({ bucket: s.bucket, region: s.region, endpoint: s.endpoint, accessKeyId: s.accessKeyId, secretAccessKey: s.secretAccessKey })
+    // no S3: keep files in the database on Render (its disk is wiped on restart) or when STORAGE_DRIVER=db
+    : process.env.STORAGE_DRIVER === 'db' || (process.env.RENDER && process.env.STORAGE_DRIVER !== 'local') ? createDbStorage(db, cfg.publicUrl, cfg.jwtSecret)
     : createLocalStorage(s.localDir, cfg.publicUrl, cfg.jwtSecret));
   const e = cfg.email;
   const email = o.email ?? (e.provider === 'resend' && e.apiKey ? createResendEmail(e.apiKey, e.from)
@@ -53,7 +55,7 @@ export function createContext(cfg: Config, db: Db, o: AppOverrides = {}): Ctx {
     timeZone: process.env.TZ_DISPLAY ?? 'America/Edmonton',
   };
   if (cfg.prod) {
-    for (const [name, p] of [['payments', payments.kind === 'fake'], ['sms', sms.kind === 'local'], ['storage', storage.kind === 'local'], ['email', email.kind === 'log']] as const)
+    for (const [name, p] of [['payments', payments.kind === 'fake'], ['sms', sms.kind === 'local'], ['storage', storage.kind !== 's3'], ['email', email.kind === 'log']] as const)
       if (p) log(`WARNING: ${name} is running on a local stand-in in production`);
   }
   return ctx;

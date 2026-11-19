@@ -3,9 +3,10 @@
 import { createHash, createHmac } from 'node:crypto';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import path from 'node:path';
+import type { Db } from '../db/db.js';
 
 export interface Storage {
-  readonly kind: 's3' | 'local';
+  readonly kind: 's3' | 'local' | 'db';
   put(key: string, body: Buffer, contentType: string): Promise<void>;
   /** Time-limited URL to view a file. */
   url(key: string, ttlSec?: number): string;
@@ -124,6 +125,33 @@ export function createLocalStorage(dir: string, publicUrl: string, secret: strin
       } catch {
         return null;
       }
+    },
+  };
+}
+
+/**
+ * Files in Postgres (bytea). For test servers without S3 whose disk does not survive a restart.
+ * Same signed-URL scheme as local storage, served by the app at /files/.
+ */
+export function createDbStorage(db: Db, publicUrl: string, secret: string): Storage {
+  const sign = (key: string, exp: string) => createHmac('sha256', secret).update(`${key}:${exp}`).digest('base64url');
+  return {
+    kind: 'db',
+    async put(key, body, contentType) {
+      await db.query(
+        `INSERT INTO stored_files(key, content_type, body) VALUES ($1, $2, decode($3, 'base64'))
+         ON CONFLICT (key) DO UPDATE SET body = EXCLUDED.body, content_type = EXCLUDED.content_type`,
+        [key, contentType, body.toString('base64')],
+      );
+    },
+    url(key, ttlSec = 900) {
+      const exp = String(Math.floor(Date.now() / 1000) + ttlSec);
+      return `${publicUrl}/files/${encPath(key)}?exp=${exp}&sig=${sign(key, exp)}`;
+    },
+    async readLocal(key, exp, sig) {
+      if (Number(exp) < Date.now() / 1000 || sign(key, exp) !== sig) return null;
+      const rows = await db.query<{ b64: string }>(`SELECT encode(body, 'base64') AS b64 FROM stored_files WHERE key = $1`, [key]);
+      return rows[0] ? Buffer.from(rows[0].b64.replace(/\s/g, ''), 'base64') : null;
     },
   };
 }
