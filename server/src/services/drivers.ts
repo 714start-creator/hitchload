@@ -279,6 +279,13 @@ export function checklist(d: DriverRow, vehicles: VehicleRow[], docs: DocRow[], 
   const has = (kinds: DocKind[], needApproved = false) =>
     docs.some((x) => kinds.includes(x.kind) && x.status !== 'rejected' && (!needApproved || x.status === 'approved') && (!x.expires_on || x.expires_on >= today));
   const c = (key: string, done: boolean, requiredToSubmit = true, requiredToApprove = true): Check => ({ key, done, requiredToSubmit, requiredToApprove });
+  // a re-uploaded document replaces the older one of the same kind: only the newest needs review
+  const newest = new Map<string, DocRow>();
+  for (const x of docs) {
+    const prev = newest.get(x.kind);
+    if (!prev || x.created_at > prev.created_at) newest.set(x.kind, x);
+  }
+  const current = [...newest.values()];
   return [
     c('profile', Boolean(d.legal_name && d.address && d.date_of_birth && d.home_city && d.home_lat !== null)),
     c('vehicle', vehicles.some((v) => v.active)),
@@ -291,7 +298,7 @@ export function checklist(d: DriverRow, vehicles: VehicleRow[], docs: DocRow[], 
     c('background_clear', d.background_status === 'clear', false, true),
     c('agreement', Boolean(d.agreement_accepted_at && d.quiz_passed_at)),
     c('payouts', Boolean(d.stripe_account_id)),
-    c('documents_approved', docs.filter((x) => x.status !== 'rejected').length > 0 && docs.every((x) => x.status !== 'pending'), false, true),
+    c('documents_approved', current.filter((x) => x.status !== 'rejected').length > 0 && current.every((x) => x.status !== 'pending'), false, true),
   ];
 }
 

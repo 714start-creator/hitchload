@@ -236,13 +236,13 @@ function DriverDetail({ id, onChange }: { id: string; onChange: () => void }) {
       </div>
       <h3>Documents</h3>
       <div className="docs">
-        {data.documents.map((doc: any) => (
-          <div key={doc.id} className="card doc">
+        {data.documents.map((doc: any, i: number) => ({ doc, replaced: data.documents.slice(0, i).some((d: any) => d.kind === doc.kind) })).map(({ doc, replaced }: { doc: any; replaced: boolean }) => (
+          <div key={doc.id} className="card doc" style={replaced ? { opacity: 0.5 } : undefined}>
             <a href={doc.url} target="_blank" rel="noreferrer" className="thumb">
               {/\.pdf/.test(doc.url) ? 'PDF' : <img src={doc.url} alt={doc.kind} />}
             </a>
             <div>
-              <strong>{doc.kind}</strong> <Pill tone={STATUS_TONE[doc.status === 'approved' ? 'approved' : doc.status]}>{doc.status}</Pill>
+              <strong>{doc.kind}</strong> <Pill tone={STATUS_TONE[doc.status === 'approved' ? 'approved' : doc.status]}>{doc.status}</Pill>{replaced ? <> <Pill>replaced by a newer upload</Pill></> : null}
               {doc.insurer ? <p className="small">{doc.insurer} · {doc.policyNumber} · until {doc.expiresOn}{doc.coverageCents ? ` · cargo ${money(doc.coverageCents)}` : ''}</p> : null}
               {doc.note ? <p className="small muted">{doc.note}</p> : null}
               <div className="row">

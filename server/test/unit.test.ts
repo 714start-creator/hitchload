@@ -146,3 +146,14 @@ test('psql adapter quotes parameters safely', () => {
   assert.equal(inlineParams('SELECT $1, $2, $10', ["it's", null, 1, 2, 3, 4, 5, 6, 7, 8]), "SELECT 'it''s', NULL, 8");
   assert.equal(inlineParams('SELECT $1', [['a', 'b"c']]), `SELECT '{"a","b\\"c"}'`);
 });
+
+test('a re-uploaded document replaces the old one in the review checklist', async () => {
+  const { checklist } = await import('../src/services/drivers.js');
+  const doc = (kind: string, status: string, created_at: string) => ({ id: created_at, driver_id: 'd', kind, file_key: 'k', status, insurer: null, policy_number: null, coverage_cents: null, expires_on: null, note: null, created_at }) as never;
+  const d = { identity_status: 'verified', background_status: 'clear' } as never;
+  const docs = [doc('license_front', 'approved', '2026-11-19T20:00:00Z'), doc('license_front', 'pending', '2026-11-19T19:00:00Z')];
+  const ready = checklist(d, [], docs, '2026-11-19').find((c) => c.key === 'documents_approved')!;
+  assert.equal(ready.done, true, 'old pending copy does not block');
+  const stale = checklist(d, [], [doc('license_front', 'pending', '2026-11-19T20:00:00Z'), doc('license_front', 'approved', '2026-11-19T19:00:00Z')], '2026-11-19').find((c) => c.key === 'documents_approved')!;
+  assert.equal(stale.done, false, 'the newest upload still needs review');
+});
