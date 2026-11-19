@@ -40,18 +40,18 @@ for (const d of drivers) {
   for (const [kind, coverage] of docs) {
     await db.query(
       `INSERT INTO documents(driver_id, kind, file_key, status, insurer, policy_number, coverage_cents, expires_on, reviewed_at)
-       SELECT $1, $2::doc_kind, 'u/' || $1 || '/document/demo-' || $2 || '.jpg', 'approved', CASE WHEN $2 LIKE 'insurance%' THEN 'Demo Insurance' END,
-              CASE WHEN $2 LIKE 'insurance%' THEN 'DEMO-' || upper(substr($2, 11, 3)) END, $3::int, CASE WHEN $2 LIKE 'insurance%' THEN current_date + 300 END, now()
-       WHERE NOT EXISTS (SELECT 1 FROM documents WHERE driver_id = $1 AND kind = $2::doc_kind)`,
-      [id, kind, coverage],
+       SELECT $1::uuid, $2::doc_kind, 'u/' || $5 || '/document/demo-' || $4 || '.jpg', 'approved', CASE WHEN $4 LIKE 'insurance%' THEN 'Demo Insurance' END,
+              CASE WHEN $4 LIKE 'insurance%' THEN 'DEMO-' || upper(substr($4, 11, 3)) END, $3::int, CASE WHEN $4 LIKE 'insurance%' THEN current_date + 300 END, now()
+       WHERE NOT EXISTS (SELECT 1 FROM documents WHERE driver_id = $1::uuid AND kind = $2::doc_kind)`,
+      [id, kind, coverage, kind, id],
     );
   }
   const [type, make, model, trailer] = d.vehicle;
   const [v] = await db.query<{ id: string }>(
     `INSERT INTO vehicles(driver_id, type, make, model, year, plate, registered_weight_kg, has_trailer, max_size, equipment)
-     SELECT $1, $2, $3, $4, 2021, 'DEMO' || substr($1::text, 1, 3), 3200, $5, $6, '{straps,blankets}'
-     WHERE NOT EXISTS (SELECT 1 FROM vehicles WHERE driver_id = $1) RETURNING id`,
-    [id, type, make, model, trailer, 'XL'],
+     SELECT $1::uuid, $2::vehicle_type, $3::text, $4::text, 2021, 'DEMO' || upper(substr($7, 1, 3)), 3200, $5::boolean, $6::size_class, '{straps,blankets}'
+     WHERE NOT EXISTS (SELECT 1 FROM vehicles WHERE driver_id = $1::uuid) RETURNING id`,
+    [id, type, make, model, trailer, 'XL', id],
   );
   const vid = v?.id ?? (await db.query<{ id: string }>('SELECT id FROM vehicles WHERE driver_id = $1 LIMIT 1', [id]))[0]!.id;
   const routes = d.tier === 'pro'

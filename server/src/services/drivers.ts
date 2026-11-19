@@ -198,7 +198,7 @@ export async function saveTaxInfo(ctx: Ctx, userId: string, p: z.infer<typeof ta
     `UPDATE drivers SET tax_id_type = $2, tax_id_enc = $3, tax_id_last3 = $4, gst_number = $5 WHERE user_id = $1`,
     [userId, p.type, encrypt(digits, ctx.cfg.dataKey), digits.slice(-3), p.gstNumber ?? null],
   );
-  await ctx.db.query(`INSERT INTO audit_log(actor_id, action, target) VALUES ($1, 'tax_info_saved', $1)`, [userId]);
+  await ctx.db.query(`INSERT INTO audit_log(actor_id, action, target) VALUES ($1, 'tax_info_saved', $2)`, [userId, userId]);
   // release payouts that were waiting for this
   const { retryHeldPayouts } = await import('./payouts.js');
   await retryHeldPayouts(ctx, userId);
@@ -360,9 +360,9 @@ export async function decideDriver(ctx: Ctx, adminId: string, userId: string, p:
   const tier = p.tier ?? o.driver.tier;
   const cargoLimit = p.cargoLimitCents ?? (tier === 'pro' ? Math.max(o.driver.cargoLimitCents, maxCoverage(o.documents, 'insurance_cargo')) : ctx.cfg.rules.basicCargoLimitCents);
   await ctx.db.query(
-    `UPDATE drivers SET status = $2, tier = $3, car_hauler = coalesce($4, car_hauler), cargo_limit_cents = $5,
-       approved_at = CASE WHEN $2 = 'approved' THEN coalesce(approved_at, now()) ELSE approved_at END,
-       paused_reason = CASE WHEN $2 = 'paused' THEN $6 ELSE NULL END
+    `UPDATE drivers SET status = $2::driver_status, tier = $3, car_hauler = coalesce($4, car_hauler), cargo_limit_cents = $5,
+       approved_at = CASE WHEN $2::driver_status = 'approved' THEN coalesce(approved_at, now()) ELSE approved_at END,
+       paused_reason = CASE WHEN $2::driver_status = 'paused' THEN $6 ELSE NULL END
      WHERE user_id = $1`,
     [userId, p.status, tier, p.carHauler ?? null, cargoLimit, p.reason ?? null],
   );

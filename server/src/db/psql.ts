@@ -76,8 +76,26 @@ export function createPsqlDb(connectionString: string, psqlPath = 'psql'): Db {
     });
   }
 
+  async function exec(sqlLine: string): Promise<string[]> {
+    const script = `\\unset LAST_ERROR_SQLSTATE\n${sqlLine}\n\\if :ERROR\n\\echo @@ERR@@ :LAST_ERROR_SQLSTATE :LAST_ERROR_MESSAGE\n\\else\n\\echo @@OK@@\n\\endif`;
+    const out = await send(script);
+    const err = out.find((l) => l.startsWith('@@ERR@@'));
+    if (err) {
+      const [, code = '', ...msg] = err.split(' ');
+      throw new DbError(msg.join(' '), code);
+    }
+    return out;
+  }
+
   async function raw<R>(text: string, params?: unknown[]): Promise<R[]> {
-    const sql = inlineParams(text.trim().replace(/;\s*$/, ''), params);
+    const body = text.trim().replace(/;\s*$/, '');
+    // Parameters are inlined below, which hides type errors that node-postgres would hit
+    // (it sends parameters untyped). PREPARE first so Postgres infers parameter types the same way.
+    if (params && params.length && /\$\d/.test(body)) {
+      await exec(`PREPARE _typecheck AS ${body};`);
+      await exec('DEALLOCATE _typecheck;');
+    }
+    const sql = inlineParams(body, params);
     let wrapped: string;
     if (/^(select|with)\b/i.test(sql)) wrapped = `SELECT coalesce(json_agg(row_to_json(_q)), '[]'::json) FROM (${sql}) _q;`;
     else if (/\breturning\b/i.test(sql)) wrapped = `WITH _q AS (${sql}) SELECT coalesce(json_agg(row_to_json(_q)), '[]'::json) FROM _q;`;
