@@ -1,0 +1,40 @@
+{
+  "name": "poputka-mobile",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test test/*.test.mts",
+    "doctor": "npx expo-doctor"
+  },
+  "dependencies": {
+    "@react-native-community/datetimepicker": "8.4.4",
+    "@stripe/stripe-react-native": "0.50.3",
+    "expo": "~54.0.0",
+    "expo-constants": "~18.0.0",
+    "expo-device": "~8.0.0",
+    "expo-file-system": "~19.0.0",
+    "expo-image-picker": "~17.0.0",
+    "expo-linking": "~8.0.0",
+    "expo-location": "~19.0.0",
+    "expo-notifications": "~0.32.0",
+    "expo-router": "~6.0.0",
+    "expo-secure-store": "~15.0.0",
+    "expo-status-bar": "~3.0.0",
+    "expo-web-browser": "~15.0.0",
+    "react": "19.1.0",
+    "react-native": "0.81.4",
+    "react-native-maps": "1.20.1",
+    "react-native-safe-area-context": "~5.6.0",
+    "react-native-screens": "~4.16.0"
+  },
+  "devDependencies": {
+    "@types/react": "~19.1.0",
+    "tsx": "^4.19.2",
+    "typescript": "~5.9.2"
+  }
+}

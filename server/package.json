@@ -1,0 +1,36 @@
+{
+  "name": "hitchload-server",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Poputka delivery marketplace API",
+  "type": "module",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "start": "node dist/main.js",
+    "build": "esbuild \"src/**/*.ts\" --outdir=dist --platform=node --format=esm --target=node22 --log-level=warning",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "migrate": "tsx src/db/migrate.ts",
+    "seed": "tsx src/db/seed.ts",
+    "test": "node --import tsx --test --test-concurrency=1 --test-timeout=120000 test/*.test.ts",
+    "test:local": "scripts/with-test-db.sh npm test",
+    "test:admin-ui": "scripts/with-test-db.sh node --import tsx --test test/e2e/admin-ui.e2e.ts",
+    "vapid": "node -e \"const e=require('crypto').createECDH('prime256v1');e.generateKeys();console.log('VAPID_PUBLIC_KEY='+e.getPublicKey().toString('base64url'));console.log('VAPID_PRIVATE_KEY='+e.getPrivateKey().toString('base64url'))\""
+  },
+  "dependencies": {
+    "pg": "^8.13.1",
+    "ws": "^8.18.0",
+    "zod": "^3.25.0"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "@types/pg": "^8.11.10",
+    "@types/ws": "^8.5.13",
+    "playwright": "^1.55.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "esbuild": "^0.25.0"
+  }
+}

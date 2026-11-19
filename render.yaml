@@ -1,0 +1,40 @@
+# Render Blueprint: test server with the website, API, admin and a PostgreSQL database.
+# Render → New → Blueprint → pick this repository → Apply.
+# Runs in TEST MODE (NODE_ENV=development): SMS codes are shown on the page, cards are test cards,
+# Stripe identity/payout pages are simulated, emails go to the server log. Not for real customers.
+services:
+  - type: web
+    runtime: docker
+    name: hitchload
+    plan: free
+    region: oregon
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: development
+      - key: SEED_DEMO
+        value: "1"
+      - key: BRAND_NAME
+        value: Hitchload
+      - key: TZ_DISPLAY
+        value: America/Edmonton
+      - key: DATABASE_URL
+        fromDatabase:
+          name: hitchload-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: DATA_ENCRYPTION_KEY
+        generateValue: true
+      # your phone in +1XXXXXXXXXX format: gives access to /admin/
+      - key: ADMIN_PHONES
+        sync: false
+
+databases:
+  - name: hitchload-db
+    plan: free
+    postgresMajorVersion: "16"
+    databaseName: hitchload
+    user: hitchload

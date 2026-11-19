@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Hitchload Admin</title>
+<style>
+:root {
+  --bg: #eef1ef; --panel: #fff; --ink: #18201c; --muted: #5c6862; --line: #d5dcd8;
+  --sign: #0b6b45; --sign-ink: #fff; --sign-soft: #e2f1ea; --amber: #b86e00; --amber-soft: #fbefd9; --red: #b3261e; --red-soft: #fbe4e2; --chip: #f3f6f4;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root { --bg: #101512; --panel: #18201b; --ink: #e7ede9; --muted: #9aa8a1; --line: #2c3731; --sign: #2fa673; --sign-ink: #08140e; --sign-soft: #16302a; --amber: #e8a33d; --amber-soft: #332611; --red: #ef7b72; --red-soft: #3a1d1b; --chip: #1f2923; color-scheme: dark; }
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 system-ui, -apple-system, "Segoe UI", sans-serif; }
+a { color: var(--sign); }
+header { display: flex; gap: 16px; align-items: center; padding: 10px 20px; background: var(--panel); border-bottom: 1px solid var(--line); position: sticky; top: 0; z-index: 2; flex-wrap: wrap; }
+header nav { display: flex; gap: 4px; flex: 1; flex-wrap: wrap; }
+header nav a { padding: 6px 10px; border-radius: 6px; text-decoration: none; color: var(--ink); }
+header nav a.on { background: var(--ink); color: var(--panel); }
+main { padding: 20px; max-width: 1200px; margin: 0 auto; display: grid; gap: 16px; }
+h1, h2, h3 { margin: 0 0 8px; } h2 { font-size: 20px; } h3 { font-size: 15px; }
+.brand { display: inline-block; background: var(--sign); color: var(--sign-ink); font-weight: 800; letter-spacing: .04em; padding: 4px 12px; border-radius: 6px; outline: 2px solid var(--sign); border: 2px solid var(--sign-ink); font-size: 22px; }
+.brand.small { font-size: 14px; padding: 2px 8px; }
+.signin { max-width: 380px; margin: 10vh auto; display: grid; gap: 12px; }
+.signin form { display: grid; gap: 10px; }
+label { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+input, select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--line); border-radius: 6px; padding: 7px 9px; }
+button, .button { font: inherit; cursor: pointer; border: 1px solid var(--line); background: var(--panel); color: var(--ink); border-radius: 6px; padding: 7px 12px; font-weight: 600; text-decoration: none; display: inline-block; }
+button.primary, .button { background: var(--sign); border-color: var(--sign); color: var(--sign-ink); }
+button.danger { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+button.ghost { border-color: transparent; background: transparent; }
+button:disabled { opacity: .45; cursor: not-allowed; }
+button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible { outline: 2px solid var(--sign); outline-offset: 2px; }
+.row { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; }
+.grow { flex: 1; min-width: 200px; }
+.tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+.tabs button.on { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 6px; min-width: 0; align-content: start; }
+.card p { margin: 0; }
+.grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+@media (max-width: 800px) { .grid2 { grid-template-columns: 1fr; } }
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px; }
+.tile { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px; display: grid; gap: 4px; text-decoration: none; color: var(--ink); }
+.tile.link:hover { border-color: var(--sign); }
+.tile .num { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; }
+.table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; }
+table { border-collapse: collapse; width: 100%; }
+th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-size: 11px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+td.num, th.num { text-align: right; font-variant-numeric: tabular-nums; }
+tr.clickable { cursor: pointer; } tr.clickable:hover td { background: var(--chip); }
+.pill { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; border: 1px solid var(--line); background: var(--chip); white-space: nowrap; }
+.pill.go { background: var(--sign-soft); border-color: var(--sign); }
+.pill.wait { background: var(--amber-soft); border-color: var(--amber); }
+.pill.done { background: var(--ink); color: var(--panel); border-color: var(--ink); }
+.pill.bad { background: var(--red-soft); border-color: var(--red); color: var(--red); }
+.muted { color: var(--muted); } .small { font-size: 12px; }
+.error { color: var(--red); } .ok { color: var(--sign); }
+.checks { list-style: none; padding: 0; margin: 0; display: grid; gap: 3px; }
+.checks li::before { display: inline-block; width: 18px; }
+.checks li.done::before { content: "✓"; color: var(--sign); font-weight: 800; }
+.checks li.todo::before { content: "✕"; color: var(--red); font-weight: 800; }
+.checks li.opt::before { content: "·"; color: var(--muted); }
+.docs { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 10px; }
+.doc { grid-template-columns: 96px 1fr; align-items: start; }
+.thumb { display: grid; place-items: center; width: 96px; height: 96px; border-radius: 8px; background: var(--chip); overflow: hidden; text-decoration: none; color: var(--muted); font-weight: 700; }
+.thumb img { width: 100%; height: 100%; object-fit: cover; }
+.money p { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+.timeline { margin: 0; padding-left: 18px; display: grid; gap: 4px; }
+code { font-size: 11px; color: var(--muted); word-break: break-all; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="app.js"></script>
+</body>
+</html>
