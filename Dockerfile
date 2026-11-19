@@ -24,6 +24,8 @@ COPY --from=build /app/server/migrations migrations
 COPY --from=build /app/server/package.json .
 COPY --from=build /app/admin/dist /app/admin/dist
 COPY --from=build /app/web/dist /app/web/dist
+# the server runs as the unprivileged "node" user: give it a folder for uploaded photos (local storage without S3)
+RUN mkdir -p /app/server/uploads && chown node:node /app/server/uploads
 EXPOSE 8080
 USER node
 CMD ["node", "dist/main.js"]
