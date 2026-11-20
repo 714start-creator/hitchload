@@ -116,6 +116,7 @@ export function LoadCard({ o, eta, fitsWindow }: { o: Order; eta?: string; fitsW
       </div>
       {e?.lockReason === 'pro_window' && e.opensAt ? <Notice>{t('lockedPro', { left: '' })} <Countdown to={e.opensAt} now={now} /></Notice> : null}
       {e?.lockReason === 'cargo_limit' ? <Notice tone="bad">{t('lockedCargo')}</Notice> : null}
+      {e?.lockReason === 'client_payment' ? <Notice tone="bad">{t('lockedClientPayment')}</Notice> : null}
       {e?.sizeWarning ? <Notice>{t('sizeWarn')}</Notice> : null}
     </Link>
   );

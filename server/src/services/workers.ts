@@ -72,7 +72,8 @@ export async function insuranceCheck(ctx: Ctx): Promise<{ reminded: number; paus
   const lapsed = await ctx.db.query<{ user_id: string }>(
     `UPDATE drivers SET status = 'paused', paused_reason = 'insurance_expired'
      WHERE status = 'approved' AND NOT EXISTS (
-       SELECT 1 FROM documents x WHERE x.driver_id = drivers.user_id AND x.kind IN ('insurance_endorsement','insurance_commercial')
+       SELECT 1 FROM documents x WHERE x.driver_id = drivers.user_id
+         AND (x.kind IN ('insurance_endorsement','insurance_commercial') OR (x.kind = 'insurance_auto' AND x.risk_ack_at IS NOT NULL))
          AND x.status = 'approved' AND x.expires_on >= $1::date)
      RETURNING user_id`,
     [today],

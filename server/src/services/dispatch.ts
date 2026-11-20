@@ -7,7 +7,7 @@ import type { DriverRow, OrderRow } from './dto.js';
 import { notify } from './notify.js';
 import { sizeFits, type TripRow } from './trips.js';
 
-export type LockReason = 'pro_window' | 'cargo_limit';
+export type LockReason = 'pro_window' | 'cargo_limit' | 'client_payment';
 
 export interface Eligibility {
   visible: boolean;
@@ -56,13 +56,15 @@ export function evaluate(ctx: Ctx, o: OrderRow, dc: DriverContext, now = ctx.now
   const near = distanceToPickupKm !== null && distanceToPickupKm <= d.radius_km;
 
   const base = { visible: true, requestedToMe, onMyTrip, near, sizeWarning, distanceToPickupKm };
+  // the customer's last payment failed: nobody can take the order until they save a working card
+  if (o.payment_error) return { ...base, canTake: false, lockReason: 'client_payment' };
   if (o.declared_value_cents > cargoLimitCents({ tier: d.tier, cargoLimitCents: d.cargo_limit_cents }, o.insured, r)) return { ...base, canTake: false, lockReason: 'cargo_limit' };
   if (!requestedToMe && d.tier !== 'pro' && now < new Date(o.pro_until)) return { ...base, canTake: false, lockReason: 'pro_window', opensAt: o.pro_until };
   return { ...base, canTake: true };
 }
 
 /** Notify drivers about a new or re-opened order. phase 'pro' = Pro only; 'basic' = the rest. */
-export async function dispatchOrder(ctx: Ctx, o: OrderRow, phase: 'pro' | 'basic' | 'all', limit = 50): Promise<number> {
+export async function dispatchOrder(ctx: Ctx, o: OrderRow, phase: 'pro' | 'basic' | 'all', limit = 500): Promise<number> {
   const drivers = await ctx.db.query<{ user_id: string }>(
     `SELECT user_id FROM drivers WHERE status = 'approved' AND user_id <> $1 AND ($2 = 'all' OR tier::text = $2)`,
     [o.client_id, phase === 'all' ? 'all' : phase],
@@ -75,9 +77,13 @@ export async function dispatchOrder(ctx: Ctx, o: OrderRow, phase: 'pro' | 'basic
     if (!dc) continue;
     // evaluate as if the Pro window were over, so basic drivers are matched in the 'basic' phase
     const e = evaluate(ctx, { ...o, pro_until: phase === 'pro' ? o.pro_until : new Date(0).toISOString() }, dc);
-    // everyone can see every open order, but only drivers nearby or with a matching trip are notified
-    if (!e.visible || e.lockReason === 'cargo_limit' || e.sizeWarning || (!e.near && !e.onMyTrip && !e.requestedToMe)) continue;
+    // everyone can see every open order; notified are all drivers based in the pickup city,
+    // plus drivers nearby right now or with a trip that matches the order
     const r = ctx.cfg.rules;
+    const d = dc.driver;
+    const inPickupCity = (d.home_city !== null && d.home_city.toLowerCase() === o.pickup.city.toLowerCase())
+      || (d.home_lat !== null && d.home_lng !== null && haversineKm({ lat: d.home_lat, lng: d.home_lng }, o.pickup) <= r.cityRadiusKm);
+    if (!e.visible || e.lockReason === 'cargo_limit' || e.lockReason === 'client_payment' || (!inPickupCity && !e.near && !e.onMyTrip && !e.requestedToMe)) continue;
     const trip = e.onMyTrip ? dc.trips.find((t) => matchRoute(t.stops, o.pickup, o.dropoff, r.stopMatchKm, r.roadFactor)) : undefined;
     if (trip) {
       // a load on one of the driver's published trips: say which trip, and only once per order

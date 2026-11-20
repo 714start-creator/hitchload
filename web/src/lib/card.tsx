@@ -43,7 +43,7 @@ export function CardForm({ onSaved }: { onSaved: (me: Me) => void }) {
         const css = getComputedStyle(document.documentElement);
         elements.current = stripe.current.elements({
           clientSecret: setup.setupIntentClientSecret,
-          locale: lang === 'ru' ? 'ru' : 'en-CA',
+          locale: (lang === 'pa' || lang === 'uk' ? 'en' : lang) as string,
           appearance: { theme: 'stripe', variables: { colorPrimary: css.getPropertyValue('--sign').trim() || '#0b6b45', borderRadius: '8px' } },
         });
         elements.current.create('payment', { layout: 'tabs' }).mount(box.current);

@@ -38,10 +38,12 @@ test('a driver applies (API)', async () => {
   await s.api.patch('/v1/driver', { legalName: 'Taras Melnyk', address: '10220 104 Ave NW, Edmonton AB', dateOfBirth: '1985-02-03', homeCity: 'Edmonton', home: { lat: 53.5461, lng: -113.4938 }, radiusKm: 60 });
   await s.api.post('/v1/driver/vehicles', { type: 'pickup', make: 'Ford', model: 'F-150', year: 2020, plate: 'CTX4444', registeredWeightKg: 3200, hasTrailer: false, equipment: ['straps'] });
   for (const d of [
-    { kind: 'license_front' }, { kind: 'license_back' }, { kind: 'registration' }, { kind: 'background_check' },
+    { kind: 'license_front' }, { kind: 'license_back' }, { kind: 'registration' }, { kind: 'background_check' }, { kind: 'vehicle_side' }, { kind: 'vehicle_rear' },
     { kind: 'insurance_commercial', insurer: 'Intact', policyNumber: 'P-4444', expiresOn: '2027-06-30' },
     { kind: 'insurance_cargo', insurer: 'Aviva', policyNumber: 'C-4444', coverageCents: 1_000_000, expiresOn: '2027-06-30' },
   ]) await s.api.post('/v1/driver/documents', { ...d, fileKey: await up() });
+  // the driver re-uploads the licence front: the old copy must not block the review
+  await s.api.post('/v1/driver/documents', { kind: 'license_front', fileKey: await up() });
   await s.api.post('/v1/driver/identity');
   await s.api.post('/v1/driver/payouts');
   const quiz = await s.api.get('/v1/driver/quiz');
@@ -72,23 +74,24 @@ test('admin reviews documents and approves the driver as Pro', async () => {
   await page.click('header >> text=Drivers');
   await page.getByRole('cell', { name: 'Taras Melnyk' }).click();
   await page.getByText('Ford F-150').waitFor();
-  // approving too early lists what is missing
-  await page.click('button:has-text("Approve")');
-  await page.getByText(/Not ready to approve: .*Background check clear/).waitFor();
-  const docs = page.locator('.doc');
-  assert.equal(await docs.count(), 6);
-  for (let i = 0; i < 6; i++) {
-    await docs.nth(i).getByRole('button', { name: 'Accept' }).click();
-    await page.locator('.doc').nth(i).locator('.pill', { hasText: 'approved' }).waitFor();
-  }
+  // what is missing is listed before anything is clicked; plain Approve is disabled
+  await page.locator('.notice-box', { hasText: 'Criminal record check accepted' }).waitFor();
+  assert.equal(await page.locator('#approve').isDisabled(), true);
+  const docs = page.locator('.docs').first().locator('.doc');
+  assert.equal(await docs.count(), 8, 'eight current documents');
+  await page.locator('details', { hasText: 'Replaced by newer uploads (1)' }).waitFor();
+  // accept the record check by itself: that alone makes it "accepted"
+  await docs.filter({ hasText: 'Criminal record check' }).getByRole('button', { name: 'Accept' }).click();
+  await page.locator('.toast-admin', { hasText: 'Criminal record check: accepted' }).waitFor();
+  await page.locator('.checks li.done', { hasText: 'Criminal record check accepted' }).waitFor();
   const img = page.locator('.doc img').first();
   await img.waitFor();
   assert.ok(await img.evaluate((el) => (el as { complete: boolean }).complete));
   await page.selectOption('#tier', 'pro');
   await page.fill('#cargo', '10000');
-  await page.check('#bg-clear');
-  await page.click('#approve');
+  await page.click('#approve-all');
   await page.locator('h2 .pill', { hasText: 'approved' }).waitFor();
+  await page.getByText('Everything is in place').waitFor();
   await shot('2-driver');
   const d = await (await signIn(app, ADMIN_PHONE)).api.get(`/v1/admin/drivers/${driverId}`);
   assert.equal(d.driver.status, 'approved');

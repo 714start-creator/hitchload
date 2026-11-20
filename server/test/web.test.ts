@@ -5,7 +5,7 @@ import { createDecipheriv, createECDH, createPublicKey, hkdfSync, randomBytes, v
 import { after, before, test } from 'node:test';
 import { encryptPayload, generateVapidKeys, vapidAuth } from '../src/providers/webpush.js';
 import { broadcastAfterProWindow } from '../src/services/workers.js';
-import { client, confirmEmail, customer, expectError, onboardDriver, places, signIn, startTestApp, type TestApp } from './helpers.js';
+import { client, confirmEmail, customer, expectError, JPEG, onboardDriver, places, signIn, startTestApp, type TestApp } from './helpers.js';
 
 let app: TestApp;
 let mike: Awaited<ReturnType<typeof onboardDriver>>; // Pro driver
@@ -165,6 +165,50 @@ test('a trip around one city (Edmonton → Edmonton) is allowed and finds local 
   const t = await mike.api.post('/v1/driver/trips', { stops: [{ city: 'Edmonton', province: 'AB' }, { city: 'Edmonton', province: 'AB' }], departAt: hours(2) });
   const loads = await mike.api.get(`/v1/driver/trips/${t.id}/loads`);
   assert.ok(loads.items.some((i: { id: string }) => i.id === o.id));
+});
+
+test('a personal auto policy is accepted for Basic only with the driver\'s risk confirmation; Accept all & approve', async () => {
+  const s = await signIn(app, '7805550931');
+  await s.api.patch('/v1/me', { name: 'Petro Personal', email: 'petro@example.com', acceptTerms: true });
+  await s.api.post('/v1/driver');
+  const up = await s.api.post('/v1/uploads?purpose=document', JPEG, { 'Content-Type': 'image/jpeg' });
+  await expectError(s.api.post('/v1/driver/documents', { kind: 'insurance_auto', fileKey: up.key, insurer: 'TD', policyNumber: 'X1', expiresOn: '2027-01-01' }), 400, 'risk_ack_required');
+  const p = await onboardDriver(app, '7805550932', { name: 'Pavlo Personal', tier: 'basic', personalPolicy: true, approve: false });
+  const admin = await signIn(app, '+17800000001');
+  const before = await admin.api.get(`/v1/admin/drivers/${p.id}`);
+  const ck = (o: { checklist: { key: string; done: boolean }[] }, k: string) => o.checklist.find((c) => c.key === k)!.done;
+  assert.equal(ck(before, 'delivery_insurance'), true, 'personal policy with confirmation counts');
+  assert.equal(ck(before, 'vehicle_photos'), true);
+  assert.equal(ck(before, 'background_clear'), false);
+  assert.ok(before.documents.find((d: { kind: string }) => d.kind === 'insurance_auto').riskAcknowledgedAt);
+  // whatever the admin types, a personal policy alone caps the item value at $1,000
+  const done = await admin.api.post(`/v1/admin/drivers/${p.id}/approve-all`, { tier: 'basic', cargoLimitCents: 500000 });
+  assert.equal(done.driver.status, 'approved');
+  assert.equal(done.driver.cargoLimitCents, 100000);
+  assert.equal(ck(done, 'background_clear'), true, 'accepting the record-check document marks it clear');
+});
+
+test('vehicle photos are required to send the application', async () => {
+  const s = await signIn(app, '7805550933');
+  await s.api.patch('/v1/me', { name: 'Nadia Nophoto', email: 'nadia@example.com', acceptTerms: true });
+  const ov = await s.api.post('/v1/driver');
+  assert.equal(ov.checklist.find((c: { key: string }) => c.key === 'vehicle_photos').done, false);
+  const body = await expectError(s.api.post('/v1/driver/submit'), 400);
+  assert.ok(body.error.details.missing.includes('vehicle_photos'));
+});
+
+test('a new order notifies every driver based in the pickup city, even outside their radius', async () => {
+  // home in north Edmonton with a 5 km radius; the pickup is ~20 km away in south Edmonton
+  const north = await onboardDriver(app, '7805550934', { name: 'Oleh North', tier: 'pro', home: { lat: 53.63, lng: -113.49 }, radiusKm: 5 });
+  app.hubEvents.length = 0;
+  const c = await signIn(app, '7805550123');
+  await c.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(1), windowEnd: hours(6), priceCents: 2500 });
+  assert.ok(app.hubEvents.some((e) => e.userId === north.id && e.type === 'notification'), 'driver in the same city is notified');
+  // a Calgary-based driver is not
+  const south = await onboardDriver(app, '7805550935', { name: 'Ivan Calgary', tier: 'pro', homeCity: 'Calgary', home: { lat: 51.05, lng: -114.07 }, radiusKm: 30 });
+  app.hubEvents.length = 0;
+  await c.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(1), windowEnd: hours(6), priceCents: 2600 });
+  assert.equal(app.hubEvents.some((e) => e.userId === south.id && e.type === 'notification'), false);
 });
 
 test('browser push: subscribe, receive, unsubscribe', async () => {

@@ -253,3 +253,28 @@ details.card > summary::-webkit-details-marker { display: none; }
 @media (max-width: 720px) { .foot-inner { grid-template-columns: 1fr; } }
 
 @media (prefers-reduced-motion: reduce) { .spinner { animation-duration: 2s; } * { scroll-behavior: auto !important; } }
+
+/* validation */
+.field.invalid input, .field.invalid select, .field.invalid textarea, .field.invalid .grid-addr input { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+.field.invalid > .label, .field.invalid > legend { color: var(--red); }
+.field.invalid .thumb.add { border-color: var(--red); color: var(--red); }
+.check-wrap { display: grid; gap: 4px; }
+.check-wrap.invalid .check { color: var(--red); }
+.check-wrap.invalid input[type="checkbox"] { outline: 2px solid var(--red); outline-offset: 1px; }
+.field-error { font-weight: 500; }
+.error-summary { font-weight: 500; }
+.card.invalid, details.section.invalid { border-color: var(--red); box-shadow: 0 0 0 1px var(--red); }
+.checks li.err { color: var(--red); font-weight: 600; }
+fieldset.quiz.invalid { border-color: var(--red); }
+fieldset.quiz.invalid legend { color: var(--red); }
+.example { margin: 0; display: grid; gap: 4px; }
+.example-svg { width: 100%; max-width: 280px; height: auto; color: var(--ink); }
+
+.pay-problem { border-color: var(--red); background: var(--red-soft, #fbe4e2); }
+.pay-problem h3 { color: var(--red); margin: 0; }
+.pay-problem ul { margin: 0; padding-left: 18px; display: grid; gap: 2px; }
+
+.lang-select { font: inherit; font-size: 13px; padding: 5px 8px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel, #fff); color: var(--ink); max-width: 100%; }
+.lang-select.compact { width: 8.5em; }
+[dir="rtl"] .route .arr { display: inline-block; transform: scaleX(-1); }
+[dir="rtl"] .checks li::before { margin-left: 4px; }

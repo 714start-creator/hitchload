@@ -262,6 +262,7 @@ export function buildRouter(ctx: Ctx): Router {
   r.get('/v1/admin/drivers', async (req) => drivers.adminListDrivers(ctx, req.query.get('status') ?? undefined), A);
   r.get('/v1/admin/drivers/:id', async (req) => drivers.adminDriverDetail(ctx, id(req)), A);
   r.post('/v1/admin/drivers/:id/decision', async (req) => drivers.decideDriver(ctx, uid(req), id(req), parse(drivers.decisionSchema, req.body)), A);
+  r.post('/v1/admin/drivers/:id/approve-all', async (req) => drivers.approveAll(ctx, uid(req), id(req), parse(drivers.approveAllSchema, req.body)), A);
   r.post('/v1/admin/drivers/:id/background', async (req) => drivers.setBackgroundStatus(ctx, uid(req), id(req), parse(z.object({ status: z.enum(['none', 'pending', 'clear', 'failed']) }), req.body).status), A);
   r.post('/v1/admin/documents/:id/review', async (req) => drivers.reviewDocument(ctx, uid(req), id(req), parse(drivers.reviewDocSchema, req.body)), A);
   r.get('/v1/admin/orders', async (req) => admin.adminOrders(ctx, req.query.get('status') ?? undefined, req.query.get('q') ?? undefined), A);

@@ -36,7 +36,7 @@ export interface Me {
   email: string | null;
   emailVerified: boolean;
   emailAlerts: boolean;
-  lang: 'ru' | 'en';
+  lang: string;
   isAdmin: boolean;
   termsAccepted: boolean;
   card: { brand: string; last4: string } | null;
@@ -102,7 +102,7 @@ export interface Order {
 export interface Eligibility {
   visible: boolean;
   canTake: boolean;
-  lockReason?: 'pro_window' | 'cargo_limit';
+  lockReason?: 'pro_window' | 'cargo_limit' | 'client_payment';
   opensAt?: string;
   requestedToMe: boolean;
   onMyTrip: boolean;
@@ -167,7 +167,7 @@ export interface Check {
 export interface DriverOverview {
   driver: DriverSelf;
   vehicles: { id: string; type: string; make: string; model: string; year: number; plate: string; maxSize: Size; needsFederalSfc: boolean }[];
-  documents: { id: string; kind: string; status: 'pending' | 'approved' | 'rejected'; insurer: string | null; expiresOn: string | null; note: string | null }[];
+  documents: { id: string; kind: string; status: 'pending' | 'approved' | 'rejected'; insurer: string | null; expiresOn: string | null; note: string | null; riskAcknowledgedAt?: string | null }[];
   checklist: Check[];
 }
 

@@ -10,12 +10,14 @@ import { notify, notifyAdmins } from './notify.js';
 export const DOC_KINDS = [
   'license_front', 'license_back', 'registration',
   'insurance_auto', 'insurance_endorsement', 'insurance_commercial', 'insurance_cargo', 'insurance_car_hauling',
-  'safety_fitness_certificate', 'background_check', 'other',
+  'safety_fitness_certificate', 'background_check', 'vehicle_side', 'vehicle_rear', 'other',
 ] as const;
 export type DocKind = (typeof DOC_KINDS)[number];
 const INSURANCE_KINDS: DocKind[] = ['insurance_auto', 'insurance_endorsement', 'insurance_commercial', 'insurance_cargo', 'insurance_car_hauling'];
-/** A policy that covers driving for pay. A plain personal policy does not. */
+/** A policy that covers driving for pay. A personal policy counts only with the driver's risk acknowledgement (see hasDeliveryCover). */
 const DELIVERY_COVER: DocKind[] = ['insurance_endorsement', 'insurance_commercial'];
+/** Drivers whose only cover is a personal auto policy take items worth up to this much. */
+export const PERSONAL_POLICY_LIMIT_CENTS = 100_000;
 
 export interface DocRow {
   id: string;
@@ -30,6 +32,7 @@ export interface DocRow {
   note: string | null;
   reviewed_at: string | null;
   created_at: string;
+  risk_ack_at?: string | null;
 }
 
 export interface VehicleRow {
@@ -143,6 +146,8 @@ export const documentSchema = z.object({
   policyNumber: z.string().trim().max(60).optional(),
   coverageCents: z.number().int().min(0).max(1_000_000_00).optional(),
   expiresOn: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  /** personal policy: "I understand it may not cover paid deliveries and I am responsible" */
+  riskAck: z.boolean().optional(),
 });
 
 export async function addDocument(ctx: Ctx, userId: string, p: z.infer<typeof documentSchema>) {
@@ -152,18 +157,20 @@ export async function addDocument(ctx: Ctx, userId: string, p: z.infer<typeof do
     if (!p.insurer || !p.policyNumber || !p.expiresOn) throw bad('insurance_details_required', 'Insurer, policy number and expiry date are required');
     if (p.expiresOn <= ctx.now().toISOString().slice(0, 10)) throw bad('policy_expired', 'This policy has already expired');
     if ((p.kind === 'insurance_cargo' || p.kind === 'insurance_car_hauling') && !p.coverageCents) throw bad('coverage_required', 'Enter the cargo coverage limit');
+    if (p.kind === 'insurance_auto' && p.riskAck !== true) throw bad('risk_ack_required', 'Confirm that your personal policy may not cover paid deliveries and that you are responsible for it');
   }
   const row = await one<DocRow>(
     ctx.db,
-    `INSERT INTO documents(driver_id, kind, file_key, insurer, policy_number, coverage_cents, expires_on) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
-    [userId, p.kind, p.fileKey, p.insurer ?? null, p.policyNumber ?? null, p.coverageCents ?? null, p.expiresOn ?? null],
+    `INSERT INTO documents(driver_id, kind, file_key, insurer, policy_number, coverage_cents, expires_on, risk_ack_at)
+     VALUES ($1,$2,$3,$4,$5,$6,$7, CASE WHEN $8::boolean THEN now() END) RETURNING *`,
+    [userId, p.kind, p.fileKey, p.insurer ?? null, p.policyNumber ?? null, p.coverageCents ?? null, p.expiresOn ?? null, p.kind === 'insurance_auto' && p.riskAck === true],
   );
   return docDto(row);
 }
 
 export const docDto = (d: DocRow, url?: string) => ({
   id: d.id, kind: d.kind, status: d.status, insurer: d.insurer, policyNumber: d.policy_number, coverageCents: d.coverage_cents,
-  expiresOn: d.expires_on, note: d.note, createdAt: d.created_at, url,
+  expiresOn: d.expires_on, note: d.note, createdAt: d.created_at, riskAcknowledgedAt: d.risk_ack_at ?? null, url,
 });
 
 // ---------------------------------------------------------------- tax info (CRA reporting)
@@ -289,13 +296,15 @@ export function checklist(d: DriverRow, vehicles: VehicleRow[], docs: DocRow[], 
   return [
     c('profile', Boolean(d.legal_name && d.address && d.date_of_birth && d.home_city && d.home_lat !== null)),
     c('vehicle', vehicles.some((v) => v.active)),
+    c('vehicle_photos', has(['vehicle_side']) && has(['vehicle_rear'])),
     c('license', has(['license_front']) && has(['license_back'])),
     c('registration', has(['registration'])),
-    c('delivery_insurance', has(DELIVERY_COVER)),
+    c('delivery_insurance', has(DELIVERY_COVER) || docs.some((x) => x.kind === 'insurance_auto' && x.risk_ack_at && x.status !== 'rejected' && (!x.expires_on || x.expires_on >= today))),
     c('identity', d.identity_status === 'verified' || d.identity_status === 'pending', true, false),
     c('identity_verified', d.identity_status === 'verified', false, true),
     c('background_check', has(['background_check']) || d.background_status !== 'none', true, false),
-    c('background_clear', d.background_status === 'clear', false, true),
+    // the criminal record check is "clear" when its document is accepted (or a screening service reported clear)
+    c('background_clear', d.background_status === 'clear' || newest.get('background_check')?.status === 'approved', false, true),
     c('agreement', Boolean(d.agreement_accepted_at && d.quiz_passed_at)),
     c('payouts', Boolean(d.stripe_account_id)),
     c('documents_approved', current.filter((x) => x.status !== 'rejected').length > 0 && current.every((x) => x.status !== 'pending'), false, true),
@@ -342,6 +351,9 @@ export const reviewDocSchema = z.object({ status: z.enum(['approved', 'rejected'
 export async function reviewDocument(ctx: Ctx, adminId: string, docId: string, p: z.infer<typeof reviewDocSchema>) {
   const doc = await maybeOne<DocRow>(ctx.db, 'UPDATE documents SET status = $2, note = $3, reviewed_by = $4, reviewed_at = now() WHERE id = $1 RETURNING *', [docId, p.status, p.note ?? null, adminId]);
   if (!doc) throw notFound('Document not found');
+  if (doc.kind === 'background_check') {
+    await ctx.db.query('UPDATE drivers SET background_status = $2 WHERE user_id = $1', [doc.driver_id, p.status === 'approved' ? 'clear' : 'failed']);
+  }
   await ctx.db.query(`INSERT INTO audit_log(actor_id, action, target, data) VALUES ($1, 'document_reviewed', $2, $3)`, [adminId, docId, p]);
   if (p.status === 'rejected') await notify(ctx, doc.driver_id, 'doc_rejected', { doc: doc.kind, reason: p.note ?? '' });
   return docDto(doc);
@@ -365,7 +377,11 @@ export async function decideDriver(ctx: Ctx, adminId: string, userId: string, p:
     if (missing.length) throw bad('not_ready', 'Not ready to approve', { missing });
   }
   const tier = p.tier ?? o.driver.tier;
-  const cargoLimit = p.cargoLimitCents ?? (tier === 'pro' ? Math.max(o.driver.cargoLimitCents, maxCoverage(o.documents, 'insurance_cargo')) : ctx.cfg.rules.basicCargoLimitCents);
+  let cargoLimit = p.cargoLimitCents ?? (tier === 'pro' ? Math.max(o.driver.cargoLimitCents, maxCoverage(o.documents, 'insurance_cargo')) : ctx.cfg.rules.basicCargoLimitCents);
+  // a personal auto policy alone: items up to $1,000, whatever was typed in admin
+  const today = ctx.now().toISOString().slice(0, 10);
+  const deliveryCover = o.documents.some((d) => DELIVERY_COVER.includes(d.kind as DocKind) && d.status !== 'rejected' && (!d.expiresOn || d.expiresOn >= today));
+  if (!deliveryCover && o.documents.some((d) => d.kind === 'insurance_auto' && d.status !== 'rejected')) cargoLimit = Math.min(cargoLimit, PERSONAL_POLICY_LIMIT_CENTS);
   await ctx.db.query(
     `UPDATE drivers SET status = $2::driver_status, tier = $3, car_hauler = coalesce($4, car_hauler), cargo_limit_cents = $5,
        approved_at = CASE WHEN $2::driver_status = 'approved' THEN coalesce(approved_at, now()) ELSE approved_at END,
@@ -378,6 +394,23 @@ export async function decideDriver(ctx: Ctx, adminId: string, userId: string, p:
   if (p.status === 'rejected') await notify(ctx, userId, 'driver_rejected', { reason: p.reason ?? '' });
   if (p.status === 'paused') await notify(ctx, userId, 'account_paused', { reason: p.reason ?? '' });
   return driverOverview(ctx, userId);
+}
+
+export const approveAllSchema = z.object({
+  tier: z.enum(['basic', 'pro']),
+  cargoLimitCents: z.number().int().min(0).optional(),
+});
+
+/** Accept every pending current document (newest of each kind), then approve the driver. */
+export async function approveAll(ctx: Ctx, adminId: string, userId: string, p: z.infer<typeof approveAllSchema>) {
+  const docs = await ctx.db.query<DocRow>('SELECT * FROM documents WHERE driver_id = $1 ORDER BY created_at DESC', [userId]);
+  const seen = new Set<string>();
+  for (const d of docs) {
+    if (seen.has(d.kind)) continue; // an older copy replaced by a newer upload
+    seen.add(d.kind);
+    if (d.status === 'pending') await reviewDocument(ctx, adminId, d.id, { status: 'approved' });
+  }
+  return decideDriver(ctx, adminId, userId, { status: 'approved', tier: p.tier, cargoLimitCents: p.cargoLimitCents });
 }
 
 function maxCoverage(docs: ReturnType<typeof docDto>[], kind: DocKind): number {

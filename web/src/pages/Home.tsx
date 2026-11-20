@@ -3,24 +3,28 @@ import { api } from '../lib/api';
 import { Link, navigate, useApp } from '../lib/app';
 import { RouteMap } from '../lib/map';
 import type { Stop } from '../lib/types';
+import { useFormErrors } from '../lib/form';
 import { Button, CityInput, isoDay } from '../lib/ui';
 
 export function RouteSearch({ initialFrom = '', initialTo = '', initialDate = '', compact }: { initialFrom?: string; initialTo?: string; initialDate?: string; compact?: boolean }) {
-  const { t } = useApp();
+  const { t, cities } = useApp();
+  const f = useFormErrors();
+  const known = (v: string) => cities.some((c) => `${c.city}, ${c.province}` === v);
   const [from, setFrom] = useState(initialFrom);
   const [to, setTo] = useState(initialTo);
   const [date, setDate] = useState(initialDate);
   return (
-    <form className={`search ${compact ? 'compact' : ''}`} onSubmit={(e) => {
+    <form className={`search ${compact ? 'compact' : ''}`} noValidate onSubmit={(e) => {
       e.preventDefault();
-      if (!from || !to) return;
+      const city = (v: string) => (!v.trim() ? t('errRequired') : cities.length && !known(v) ? t('errCity') : '');
+      if (!f.check({ from: city(from), to: city(to) })) return;
       navigate(`/send?${new URLSearchParams({ from, to, ...(date ? { date } : {}) })}`);
     }}>
-      <label className="field"><span className="label">{t('searchFrom')}</span><CityInput id="search-from" value={from} onChange={(v) => setFrom(v)} /></label>
+      <label className={`field ${f.errors.from ? 'invalid' : ''}`} data-field="from"><span className="label">{t('searchFrom')}</span><CityInput id="search-from" value={from} onChange={(v) => { setFrom(v); f.clear('from'); }} />{f.errors.from ? <span className="small err field-error">{f.errors.from}</span> : null}</label>
       <button type="button" className="swap" aria-label="⇄" onClick={() => { setFrom(to); setTo(from); }}>⇄</button>
-      <label className="field"><span className="label">{t('searchTo')}</span><CityInput id="search-to" value={to} onChange={(v) => setTo(v)} /></label>
+      <label className={`field ${f.errors.to ? 'invalid' : ''}`} data-field="to"><span className="label">{t('searchTo')}</span><CityInput id="search-to" value={to} onChange={(v) => { setTo(v); f.clear('to'); }} />{f.errors.to ? <span className="small err field-error">{f.errors.to}</span> : null}</label>
       <label className="field"><span className="label">{t('searchDate')}</span><input id="search-date" type="date" value={date} min={isoDay(0)} onChange={(e) => setDate(e.target.value)} /></label>
-      <Button kind="primary" type="submit" disabled={!from || !to}>{t('findDrivers')}</Button>
+      <Button kind="primary" type="submit">{t('findDrivers')}</Button>
     </form>
   );
 }

@@ -4,14 +4,16 @@ import { Link, navigate, useApp, useLoad, useLocation } from '../lib/app';
 import { CardForm } from '../lib/card';
 import { dayTime, maskPhone } from '../lib/format';
 import { disablePush, enablePush, pushState, type PushState } from '../lib/push';
-import { Button, Card, Empty, ErrorBox, Field, Loading, Notice, PageHead, RequireAuth } from '../lib/ui';
+import { ErrorSummary, isEmail, useFormErrors } from '../lib/form';
+import { Button, Card, Empty, ErrorBox, Field, LangSelect, Loading, Notice, PageHead, RequireAuth } from '../lib/ui';
 
 export function Account() {
   return <RequireAuth><AccountPage /></RequireAuth>;
 }
 
 function AccountPage() {
-  const { t, me, refreshMe, signOut, lang, setLang, site, err } = useApp();
+  const { t, me, refreshMe, signOut, site, err } = useApp();
+  const f = useFormErrors();
   const { query } = useLocation();
   const [name, setName] = useState(me!.name ?? '');
   const [email, setEmail] = useState(me!.email ?? '');
@@ -36,20 +38,25 @@ function AccountPage() {
       <div className="split">
         <div className="stack">
           <Card>
-            <form className="stack" onSubmit={async (e) => {
+            <form className="stack" noValidate onSubmit={async (e) => {
               e.preventDefault();
               setError(null);
+              setMsg(null);
+              if (!f.check({
+                name: name.trim().length < 2 ? t('errName') : '',
+                email: !email.trim() ? t('errRequired') : !isEmail(email) ? t('errEmail') : '',
+              })) return;
               try {
                 await api.updateMe({ name: name.trim(), email: email.trim() });
                 await refreshMe();
                 setMsg(t('save') + ' ✓');
               } catch (x) {
-                setError(x);
+                if (!f.fromServer(x, {}, { name: 'name', email: 'email' })) setError(x);
               }
             }}>
               <p className="muted small">{t('phone')}: {maskPhone(m.phone)}</p>
-              <Field label={t('name')}><input value={name} onChange={(e) => setName(e.target.value)} /></Field>
-              <Field label={t('email')}><input type="email" value={email} onChange={(e) => setEmail(e.target.value)} /></Field>
+              <Field name="name" error={f.errors.name} label={t('name')}><input id="acc-name" value={name} onChange={(e) => { setName(e.target.value); f.clear('name'); }} /></Field>
+              <Field name="email" error={f.errors.email} label={t('email')}><input id="acc-email" type="email" value={email} onChange={(e) => { setEmail(e.target.value); f.clear('email'); }} /></Field>
               {m.email && !m.emailVerified ? (
                 <Notice>
                   {t('emailNotVerified')}{' '}
@@ -63,6 +70,7 @@ function AccountPage() {
                   }}>{t('resendEmail')}</Button>
                 </Notice>
               ) : null}
+              <ErrorSummary errors={f.errors} labels={{ name: t('name'), email: t('email') }} />
               <Button kind="primary" type="submit">{t('save')}</Button>
               {msg ? <p className="small ok">{msg}</p> : null}
               <ErrorBox error={error} />
@@ -77,10 +85,7 @@ function AccountPage() {
 
           <Card>
             <span className="label">{t('language')}</span>
-            <div className="row">
-              <Button small kind={lang === 'en' ? 'primary' : 'secondary'} onClick={() => setLang('en')}>English</Button>
-              <Button small kind={lang === 'ru' ? 'primary' : 'secondary'} onClick={() => setLang('ru')}>Русский</Button>
-            </div>
+            <LangSelect id="lang-account" />
           </Card>
         </div>
 

@@ -1,5 +1,5 @@
 // Pure helpers (no React Native imports) so they can be unit-tested in Node.
-import type { Lang } from './i18n';
+import { langInfo, type Lang } from './i18n';
 
 export const money = (cents: number | null | undefined) =>
   cents === null || cents === undefined ? '—' : `${cents < 0 ? '−' : ''}$${(Math.abs(cents) / 100).toLocaleString('en-CA', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
@@ -11,7 +11,7 @@ export function dollarsToCents(input: string): number | null {
   return Number.isFinite(n) ? Math.round(n * 100) : null;
 }
 
-const locale = (lang: Lang) => (lang === 'ru' ? 'ru-RU' : 'en-CA');
+export const locale = (lang: Lang) => langInfo(lang).locale;
 
 export function time(iso: string, lang: Lang): string {
   return new Intl.DateTimeFormat(locale(lang), { hour: '2-digit', minute: '2-digit' }).format(new Date(iso));

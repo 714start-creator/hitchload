@@ -32,7 +32,7 @@ async function onboard(phone: string, o: { name: string; tier: 'basic' | 'pro'; 
   await s.api.patch('/v1/driver', { legalName: o.name, address: '10220 104 Ave NW, Edmonton AB', dateOfBirth: '1988-04-12', homeCity: 'Edmonton', home: { lat: 53.5461, lng: -113.4938 }, radiusKm: 50 });
   await s.api.post('/v1/driver/vehicles', { type: o.vehicle, make: o.vehicle === 'pickup' ? 'Ram' : 'Ford', model: o.vehicle === 'pickup' ? '1500' : 'Transit', year: 2021, plate: 'CTX' + phone.slice(-4), registeredWeightKg: 3200, hasTrailer: o.trailer ?? false, equipment: ['straps', 'blankets'] });
   const docs: Record<string, unknown>[] = [
-    { kind: 'license_front' }, { kind: 'license_back' }, { kind: 'registration' }, { kind: 'background_check' },
+    { kind: 'license_front' }, { kind: 'license_back' }, { kind: 'registration' }, { kind: 'background_check' }, { kind: 'vehicle_side' }, { kind: 'vehicle_rear' },
     { kind: o.tier === 'pro' ? 'insurance_commercial' : 'insurance_endorsement', insurer: 'Intact', policyNumber: 'P-' + phone.slice(-4), expiresOn: '2027-06-30' },
   ];
   if (o.tier === 'pro') docs.push({ kind: 'insurance_cargo', insurer: 'Aviva', policyNumber: 'C-1', coverageCents: 2_500_000, expiresOn: '2027-06-30' });
@@ -295,7 +295,27 @@ test('declined card: order goes back to open and the customer is told', async ()
   const after = await bob.api.get(`/v1/orders/${o.id}`);
   assert.equal(after.status, 'open');
   assert.equal(after.paymentError, 'card_declined');
-  assert.ok(app.sms.some((m) => m.phone === '+17805550400' && /declined/.test(m.text)));
+  assert.ok(app.sms.some((m) => m.phone === '+17805550400' && /bank card was declined and \$\d+\.\d\d was not charged\. The bank declined the charge\./.test(m.text)));
+  // locked for drivers until the customer saves a working card
+  await expectError(pro.api.post(`/v1/driver/orders/${o.id}/take`), 409, 'client_payment');
+  const s2 = await bob.api.post('/v1/me/card/setup');
+  app.payments.addCard(s2.customerId, '4242');
+  await bob.api.post('/v1/me/card/sync');
+  assert.equal((await bob.api.get(`/v1/orders/${o.id}`)).paymentError, null);
+  const taken = await pro.api.post(`/v1/driver/orders/${o.id}/take`);
+  assert.equal(taken.status, 'agreed');
+});
+
+test('test cards survive a server restart (payment stand-in loses its memory)', async () => {
+  const c = await signIn(app, '7805550401');
+  await c.api.patch('/v1/me', { name: 'Cora', email: 'cora@example.com', acceptTerms: true });
+  const s = await c.api.post('/v1/me/card/setup');
+  app.payments.addCard(s.customerId);
+  await c.api.post('/v1/me/card/sync');
+  app.payments.cards.clear(); // what a restart does to the in-memory stand-in
+  const o = await c.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(2), windowEnd: hours(4), priceCents: 3000 });
+  const taken = await pro.api.post(`/v1/driver/orders/${o.id}/take`);
+  assert.equal(taken.status, 'agreed');
 });
 
 test('cargo limits: Basic cannot take a $2,500 fridge unless the customer insures it', async () => {

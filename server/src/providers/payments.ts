@@ -116,6 +116,7 @@ export function createStripePayments(secretKey: string, webhookSecret: string | 
           },
           { idempotencyKey: a.idempotencyKey },
         );
+        if (pi.status === 'requires_action') return { ok: false, error: 'authentication_required', paymentIntentId: pi.id };
         if (pi.status !== 'succeeded') return { ok: false, error: `payment_${pi.status}`, paymentIntentId: pi.id };
         return { ok: true, paymentIntentId: pi.id, chargeId: pi.latest_charge as string };
       } catch (e) {
@@ -241,7 +242,11 @@ export function createFakePayments(): FakePayments {
     async charge(a) {
       rec('charge', a);
       const card = [...cards.values()].find((c) => c.paymentMethodId === a.paymentMethodId);
-      if (!card || card.last4 === '0002') return { ok: false, error: 'card_declined', paymentIntentId: `pi_fake_${a.idempotencyKey}` };
+      // test cards live in memory; after a server restart a saved test card (pm_fake_…) is still valid
+      const known = card ?? (a.paymentMethodId.startsWith('pm_fake_') ? { last4: '4242' } : null);
+      if (!known) return { ok: false, error: 'card_missing', paymentIntentId: `pi_fake_${a.idempotencyKey}` };
+      if (known.last4 === '0002') return { ok: false, error: 'card_declined', paymentIntentId: `pi_fake_${a.idempotencyKey}` };
+      if (known.last4 === '9995') return { ok: false, error: 'insufficient_funds', paymentIntentId: `pi_fake_${a.idempotencyKey}` };
       return { ok: true, paymentIntentId: `pi_fake_${a.orderId.slice(0, 8)}_${calls.length}`, chargeId: `ch_fake_${calls.length}` };
     },
     async refund(a) {

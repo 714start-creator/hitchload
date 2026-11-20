@@ -240,7 +240,12 @@ async function requireEligible(ctx: Ctx, q: Queryable, o: OrderRow, driverId: st
   if (dc.driver.status !== 'approved') throw forbidden('Your driver account is not active');
   const e = evaluate(ctx, o, dc);
   if (!e.visible) throw notFound('Order not found');
-  if (!e.canTake) throw conflict(e.lockReason ?? 'locked', e.lockReason === 'pro_window' ? 'Pro drivers see this order first' : 'The cargo value is above your insurance limit');
+  if (!e.canTake) {
+    const msg = e.lockReason === 'pro_window' ? 'Pro drivers see this order first'
+      : e.lockReason === 'client_payment' ? "The customer's payment failed; the order can be taken once they add a working card"
+      : 'The cargo value is above your insurance limit';
+    throw conflict(e.lockReason ?? 'locked', msg);
+  }
   return dc;
 }
 
@@ -283,10 +288,10 @@ async function agree(ctx: Ctx, orderId: string, driverId: string, amountCents: n
       await q.query(`UPDATE offers SET status = 'expired' WHERE order_id = $1 AND status = 'accepted'`, [o.id]);
       await event(q, o.id, null, 'payment_failed', { error: res.error, paymentIntentId: res.paymentIntentId ?? null });
     });
-    await notify(ctx, o.client_id, 'payment_failed', { number: o.number }, { orderId: o.id });
+    await notify(ctx, o.client_id, 'payment_failed', { number: o.number, amount: fmtCad(o.charged_cents ?? 0), reason_code: res.error }, { orderId: o.id });
     if (actorId !== driverId) await notify(ctx, driverId, 'payment_failed_driver', { number: o.number }, { orderId: o.id });
     emit(ctx, { ...o, status: 'open', driver_id: null }, driverId);
-    throw paymentRequired('payment_failed', "The customer's card was declined. The order is open again");
+    throw paymentRequired('payment_failed', "The customer's payment did not go through. The order is back in the list and we have told the customer");
   }
   await ctx.db.query(`UPDATE orders SET payment_intent_id = $2, charge_id = $3, charged_at = now() WHERE id = $1`, [o.id, res.paymentIntentId, res.chargeId]);
   await event(ctx.db, o.id, null, 'charged', { amountCents: o.charged_cents, paymentIntentId: res.paymentIntentId });

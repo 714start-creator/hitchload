@@ -1,6 +1,7 @@
 // HTTP client for the site. Same origin as the API; the session token lives in localStorage.
 import type { CancelPreview, City, DriverOverview, Earnings, Me, Message, Notification, Order, PublicLoad, Quote, RouteAlert, SiteConfig, Size, Stop, Trip, TripLoad, TripOption } from './types';
 import type { PlaceValue } from './format';
+import type { Lang } from './i18n';
 
 export class ApiError extends Error {
   constructor(readonly status: number, readonly code: string, message: string, readonly details?: unknown) {
@@ -75,7 +76,7 @@ export const api = {
   verifyOtp: (phone: string, code: string) => post<{ token: string; user: Me }>('/v1/auth/otp/verify', { phone, code }),
   // account
   me: () => get<Me>('/v1/me'),
-  updateMe: (p: { name?: string; email?: string; lang?: 'ru' | 'en'; acceptTerms?: true; emailAlerts?: boolean }) => call<Me>('PATCH', '/v1/me', p),
+  updateMe: (p: { name?: string; email?: string; lang?: Lang; acceptTerms?: true; emailAlerts?: boolean }) => call<Me>('PATCH', '/v1/me', p),
   resendEmail: () => post<{ sent: boolean }>('/v1/me/email/verify'),
   savePush: (sub: PushSubscriptionJSON) => post('/v1/me/push-tokens', { token: JSON.stringify(sub), platform: 'web' }),
   removePush: (sub: PushSubscriptionJSON) => call('DELETE', '/v1/me/push-tokens', { token: JSON.stringify(sub) }),

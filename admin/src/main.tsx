@@ -178,46 +178,88 @@ function Drivers({ openId }: { openId?: string }) {
 }
 
 const CHECK_LABEL: Record<string, string> = {
-  profile: 'Personal details', vehicle: 'Vehicle', license: "Driver's licence", registration: 'Registration', delivery_insurance: 'Delivery insurance',
-  identity: 'Identity check started', identity_verified: 'Identity verified (Stripe)', background_check: 'Background check uploaded', background_clear: 'Background check clear',
-  agreement: 'Rules + quiz', payouts: 'Payout account', documents_approved: 'All documents reviewed',
+  profile: 'Personal details', vehicle: 'Vehicle', vehicle_photos: 'Vehicle photos (side + rear with plate)', license: "Driver's licence (both sides)", registration: 'Vehicle registration',
+  delivery_insurance: 'Insurance covering deliveries', identity: 'ID check started', identity_verified: 'ID verified by Stripe',
+  background_check: 'Criminal record check uploaded', background_clear: 'Criminal record check accepted', agreement: 'Rules + quiz', payouts: 'Payout account',
+  documents_approved: 'All current documents reviewed',
 };
+
+const DOC_LABEL: Record<string, string> = {
+  background_check: 'Criminal record check', license_front: "Driver's licence — front", license_back: "Driver's licence — back", registration: 'Vehicle registration',
+  vehicle_side: 'Vehicle — side view', vehicle_rear: 'Vehicle — rear view (plate)',
+  insurance_auto: 'Personal auto policy', insurance_endorsement: 'Delivery endorsement', insurance_commercial: 'Commercial auto policy',
+  insurance_cargo: 'Cargo policy', insurance_car_hauling: 'Car hauling policy', safety_fitness_certificate: 'Safety fitness certificate', other: 'Other',
+};
+const DOC_ORDER = Object.keys(DOC_LABEL);
 
 function DriverDetail({ id, onChange }: { id: string; onChange: () => void }) {
   const { data, error, reload } = useData(() => api<any>('GET', `/v1/admin/drivers/${id}`), [id]);
   const [tier, setTier] = useState('basic');
   const [cargo, setCargo] = useState('');
   const [reason, setReason] = useState('');
-  const [bgClear, setBgClear] = useState(false);
-  const [msg, setMsg] = useState<string | null>(null);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [busy, setBusy] = useState(false);
   useEffect(() => {
     if (data) {
       setTier(data.driver.tier);
       setCargo(String(data.driver.cargoLimitCents / 100));
-      setBgClear(data.driver.backgroundStatus === 'clear');
     }
   }, [data]);
   if (error) return <p className="error">{error}</p>;
   if (!data) return <p className="muted">Loading…</p>;
   const d = data.driver;
-  const act = async (fn: () => Promise<unknown>) => {
+  const act = async (fn: () => Promise<unknown>, okText = 'Saved') => {
     setMsg(null);
+    setBusy(true);
     try {
       await fn();
-      reload();
-      onChange();
-      setMsg('Saved');
+      setMsg({ text: okText, ok: true });
     } catch (e) {
       const err = e as ApiError;
-      setMsg(err.details && (err.details as { missing?: string[] }).missing ? `${err.message}: ${(err.details as { missing: string[] }).missing.map((k) => CHECK_LABEL[k] ?? k).join(', ')}` : err.message);
+      const missing = (err.details as { missing?: string[] } | undefined)?.missing;
+      setMsg({ text: missing ? `${err.message}: ${missing.map((k) => CHECK_LABEL[k] ?? k).join(', ')}` : err.message, ok: false });
+    } finally {
+      setBusy(false);
+      reload();
+      onChange();
     }
   };
-  const decide = (status: string, extra: Record<string, unknown> = {}) =>
-    act(() => api('POST', `/v1/admin/drivers/${id}/decision`, { status, tier, cargoLimitCents: Math.round(Number(cargo) * 100), ...(reason ? { reason } : {}), ...extra }));
+  const cargoCents = Math.round(Number(cargo) * 100);
+  // newest document of each kind is the one that counts; older copies were replaced
+  const docs: any[] = data.documents;
+  const current = docs.filter((doc, i) => !docs.slice(0, i).some((x) => x.kind === doc.kind))
+    .sort((x, y) => DOC_ORDER.indexOf(x.kind) - DOC_ORDER.indexOf(y.kind));
+  const replaced = docs.filter((doc) => !current.includes(doc));
+  const pendingDocs = current.filter((doc) => doc.status === 'pending');
+  const missing: string[] = data.checklist.filter((c: { requiredToApprove: boolean; done: boolean }) => c.requiredToApprove && !c.done).map((c: { key: string }) => c.key);
+  // what is still missing after "Accept all" would accept the pending documents
+  const fixable = new Set<string>();
+  if (pendingDocs.length) fixable.add('documents_approved');
+  if (pendingDocs.some((x) => x.kind === 'background_check')) fixable.add('background_clear');
+  const afterAcceptAll = missing.filter((k) => !fixable.has(k));
+  const docCard = (doc: any, old = false) => (
+    <div key={doc.id} className="card doc" style={old ? { opacity: 0.55 } : undefined}>
+      <a href={doc.url} target="_blank" rel="noreferrer" className="thumb">
+        {/\.pdf/.test(doc.url) ? 'PDF' : <img src={doc.url} alt={DOC_LABEL[doc.kind] ?? doc.kind} />}
+      </a>
+      <div>
+        <strong>{DOC_LABEL[doc.kind] ?? doc.kind}</strong> <Pill tone={STATUS_TONE[doc.status === 'approved' ? 'approved' : doc.status]}>{doc.status}</Pill>
+        {doc.insurer ? <p className="small">{doc.insurer} · {doc.policyNumber} · until {doc.expiresOn}{doc.coverageCents ? ` · cargo ${money(doc.coverageCents)}` : ''}</p> : null}
+        {doc.kind === 'insurance_auto' && doc.riskAcknowledgedAt ? <p className="small">Driver confirmed the policy may not cover paid deliveries ({new Date(doc.riskAcknowledgedAt).toLocaleDateString('en-CA')})</p> : null}
+        {doc.note ? <p className="small muted">{doc.note}</p> : null}
+        {!old ? (
+          <div className="row">
+            <button disabled={busy || doc.status === 'approved'} onClick={() => act(() => api('POST', `/v1/admin/documents/${doc.id}/review`, { status: 'approved' }), `${DOC_LABEL[doc.kind] ?? doc.kind}: accepted`)}>Accept</button>
+            <button className="danger" disabled={busy || doc.status === 'rejected'} onClick={() => act(() => api('POST', `/v1/admin/documents/${doc.id}/review`, { status: 'rejected', note: reason || 'Photo unreadable or document invalid' }), `${DOC_LABEL[doc.kind] ?? doc.kind}: rejected`)}>Reject</button>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
   return (
     <section>
       <a href="#drivers">← Drivers</a>
-      <h2>{d.legalName ?? data.user.name ?? data.user.phone} <Pill tone={STATUS_TONE[d.status]}>{d.status}</Pill></h2>
+      <h2>{d.legalName ?? data.user.name ?? data.user.phone} <Pill tone={STATUS_TONE[d.status]}>{d.status}</Pill> <Pill>{d.tier}</Pill></h2>
       <p className="muted">{data.user.phone} · {data.user.email ?? 'no email'} · born {d.dateOfBirth ?? '—'} · {d.address ?? 'no address'} · works around {d.homeCity ?? '—'} ({d.radiusKm} km)</p>
       <div className="grid2">
         <div className="card">
@@ -232,49 +274,44 @@ function DriverDetail({ id, onChange }: { id: string; onChange: () => void }) {
         <div className="card">
           <h3>Vehicles</h3>
           {data.vehicles.map((v: any) => (
-            <p key={v.id}>{v.year} {v.make} {v.model} · {v.plate} · {v.type} · up to {v.maxSize} · {v.registeredWeightKg} kg{v.needsFederalSfc ? ' · needs federal SFC for interprovincial' : ''}</p>
+            <p key={v.id}><b>{v.year} {v.make} {v.model}</b> · plate <b>{v.plate}</b> · {v.type} · up to {v.maxSize} · {v.registeredWeightKg} kg{v.needsFederalSfc ? ' · needs federal SFC for interprovincial' : ''}</p>
           ))}
+          <p className="small muted">Compare the plate with the rear photo below.</p>
         </div>
       </div>
-      <h3>Documents</h3>
-      <div className="docs">
-        {data.documents.map((doc: any, i: number) => ({ doc, replaced: data.documents.slice(0, i).some((d: any) => d.kind === doc.kind) })).map(({ doc, replaced }: { doc: any; replaced: boolean }) => (
-          <div key={doc.id} className="card doc" style={replaced ? { opacity: 0.5 } : undefined}>
-            <a href={doc.url} target="_blank" rel="noreferrer" className="thumb">
-              {/\.pdf/.test(doc.url) ? 'PDF' : <img src={doc.url} alt={doc.kind} />}
-            </a>
-            <div>
-              <strong>{doc.kind}</strong> <Pill tone={STATUS_TONE[doc.status === 'approved' ? 'approved' : doc.status]}>{doc.status}</Pill>{replaced ? <> <Pill>replaced by a newer upload</Pill></> : null}
-              {doc.insurer ? <p className="small">{doc.insurer} · {doc.policyNumber} · until {doc.expiresOn}{doc.coverageCents ? ` · cargo ${money(doc.coverageCents)}` : ''}</p> : null}
-              {doc.note ? <p className="small muted">{doc.note}</p> : null}
-              <div className="row">
-                <button onClick={() => act(() => api('POST', `/v1/admin/documents/${doc.id}/review`, { status: 'approved' }))}>Accept</button>
-                <button className="danger" onClick={() => act(() => api('POST', `/v1/admin/documents/${doc.id}/review`, { status: 'rejected', note: reason || 'Photo unreadable or document invalid' }))}>Reject</button>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
-      <div className="card">
+      <h3>Documents ({pendingDocs.length} waiting for review)</h3>
+      <div className="docs">{current.map((doc) => docCard(doc))}</div>
+      {replaced.length ? (
+        <details className="card">
+          <summary>Replaced by newer uploads ({replaced.length})</summary>
+          <div className="docs">{replaced.map((doc) => docCard(doc, true))}</div>
+        </details>
+      ) : null}
+      <div className="card" id="decision">
         <h3>Decision</h3>
+        {missing.length ? (
+          <p className="notice-box">Still needed to approve: <b>{missing.map((k) => CHECK_LABEL[k] ?? k).join(', ')}</b></p>
+        ) : <p className="ok">Everything is in place: the driver can be approved.</p>}
         <div className="row">
           <label>Level <select id="tier" value={tier} onChange={(e) => setTier(e.target.value)}><option value="basic">Basic</option><option value="pro">Pro</option></select></label>
           <label>Cargo limit, $ <input id="cargo" value={cargo} onChange={(e) => setCargo(e.target.value)} size={8} /></label>
-          <label className="grow">Reason / note <input id="reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Shown to the driver when rejecting or pausing" /></label>
+          <label className="grow">Reason / note <input id="reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Shown to the driver when rejecting a document, rejecting or pausing" /></label>
         </div>
         <div className="row">
-          <label className="checkline"><input id="bg-clear" type="checkbox" checked={bgClear} onChange={(e) => setBgClear(e.target.checked)} /> Criminal record check reviewed and clear</label>
-          <button className="primary" id="approve" onClick={() => decide('approved', bgClear ? { backgroundStatus: 'clear' } : {})}>Approve</button>
-          <button onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/background`, { status: 'clear' }))}>Background check: clear</button>
-          <button className="danger" onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/background`, { status: 'failed' }))}>Background check: failed</button>
-          <button onClick={() => decide('paused')}>Pause</button>
-          <button className="danger" onClick={() => decide('rejected')}>Reject</button>
-          <button onClick={() => act(() => api('POST', `/v1/admin/users/${id}/block`, { blocked: true }))}>Block account</button>
+          <button className="primary" id="approve-all" disabled={busy || afterAcceptAll.length > 0} title={afterAcceptAll.length ? 'Not possible yet: ' + afterAcceptAll.map((k) => CHECK_LABEL[k] ?? k).join(', ') : ''}
+            onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/approve-all`, { tier, cargoLimitCents: cargoCents }), 'Approved')}>
+            Accept all documents & approve
+          </button>
+          <button id="approve" disabled={busy || missing.length > 0} onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/decision`, { status: 'approved', tier, cargoLimitCents: cargoCents }), 'Approved')}>Approve</button>
+          <button disabled={busy} onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/decision`, { status: 'paused', ...(reason ? { reason } : {}) }), 'Paused')}>Pause</button>
+          <button className="danger" disabled={busy} onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/decision`, { status: 'rejected', ...(reason ? { reason } : {}) }), 'Rejected')}>Reject driver</button>
+          <button disabled={busy} onClick={() => act(() => api('POST', `/v1/admin/users/${id}/block`, { blocked: true }), 'Account blocked')}>Block account</button>
         </div>
-        <p className="small">Background check: <b>{d.backgroundStatus}</b></p>
-        <p className="small muted">Pro: commercial auto policy + cargo policy, 50+ jobs, rating 4.8+. The cargo limit should not exceed the cargo policy.</p>
-        {msg ? <p className={msg === 'Saved' ? 'ok' : 'error'}>{msg}</p> : null}
+        {afterAcceptAll.length && missing.length ? <p className="small muted">“Accept all” cannot fix: {afterAcceptAll.map((k) => CHECK_LABEL[k] ?? k).join(', ')}. The driver has to complete these.</p> : null}
+        <p className="small muted">Basic: $1,000 cargo limit ($5,000 when the customer buys cargo insurance). Pro: commercial auto + cargo policy; the cargo limit should not exceed the cargo policy.</p>
+        {msg ? <p className={msg.ok ? 'ok' : 'error'} role="status">{msg.text}</p> : null}
       </div>
+      {msg ? <div className={`toast-admin ${msg.ok ? 'ok' : 'bad'}`} role="status">{msg.text}</div> : null}
     </section>
   );
 }

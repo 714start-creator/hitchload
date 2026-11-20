@@ -35,7 +35,7 @@ for (const d of drivers) {
      ON CONFLICT (user_id) DO NOTHING`,
     [id, d.tier, d.name, encrypt('046454286', cfg.dataKey), `acct_demo_${id.slice(0, 8)}`, d.limit],
   );
-  const docs: [string, number | null][] = [['license_front', null], ['license_back', null], ['registration', null], ['background_check', null], [d.tier === 'pro' ? 'insurance_commercial' : 'insurance_endorsement', null]];
+  const docs: [string, number | null][] = [['license_front', null], ['license_back', null], ['registration', null], ['background_check', null], ['vehicle_side', null], ['vehicle_rear', null], [d.tier === 'pro' ? 'insurance_commercial' : 'insurance_endorsement', null]];
   if (d.tier === 'pro') docs.push(['insurance_cargo', d.limit]);
   for (const [kind, coverage] of docs) {
     await db.query(

@@ -1,7 +1,7 @@
 // Site-wide state: routing, session, language, live events, toasts.
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, getToken, setToken, setUnauthorizedHandler } from './api';
-import { errorText, translate, type Key, type Lang } from './i18n';
+import { errorText, isLang, langInfo, translate, type Key, type Lang } from './i18n';
 import type { City, Me, SiteConfig } from './types';
 
 // ---------------------------------------------------------------- router
@@ -102,11 +102,15 @@ const LANG_KEY = 'hl.lang';
 function initialLang(): Lang {
   try {
     const s = localStorage.getItem(LANG_KEY);
-    if (s === 'ru' || s === 'en') return s;
+    if (isLang(s)) return s;
   } catch {
     /* ignore */
   }
-  return navigator.language?.toLowerCase().startsWith('ru') ? 'ru' : 'en';
+  for (const n of navigator.languages ?? [navigator.language]) {
+    const code = n?.toLowerCase().slice(0, 2);
+    if (isLang(code)) return code;
+  }
+  return 'en';
 }
 
 export function AppProvider({ children }: { children: ReactNode }) {
@@ -158,6 +162,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.lang = lang;
+    document.documentElement.dir = langInfo(lang).dir;
   }, [lang]);
 
   const setLang = useCallback((l: Lang) => {

@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useApp, useLoad } from '../../lib/app';
 import { dayTime } from '../../lib/format';
+import { ErrorSummary, useFormErrors, type Errors } from '../../lib/form';
 import { RouteMap } from '../../lib/map';
 import type { Trip } from '../../lib/types';
 import { Button, Card, CityInput, Empty, ErrorBox, Field, Loading, Notice, PageHead, RequireAuth, RouteLine } from '../../lib/ui';
@@ -54,8 +55,10 @@ function NewTrip({ onPosted }: { onPosted: (t: Trip) => void }) {
   const [space, setSpace] = useState('half');
   const [note, setNote] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const f = useFormErrors();
   const parsed = stops.map((s) => cities.find((c) => `${c.city}, ${c.province}` === s));
-  const valid = parsed.every(Boolean) && parsed.length >= 2 && depart;
+  const labels: Record<string, string> = { depart: t('departure') };
+  stops.forEach((_, i) => { labels[`stop${i}`] = i === 0 ? t('stopFrom') : i === stops.length - 1 ? t('stopTo') : t('stopN', { n: i }); });
   return (
     <Card>
       <h2 className="h3">{t('newTrip')}</h2>
@@ -63,13 +66,16 @@ function NewTrip({ onPosted }: { onPosted: (t: Trip) => void }) {
       {stops.map((s, i) => (
         <div key={i} className="row stop-row">
           <span className="stop-dot" aria-hidden="true">{i === 0 ? 'A' : i === stops.length - 1 ? 'B' : '•'}</span>
-          <div className="grow"><CityInput id={`stop-${i}`} value={s} onChange={(v) => setStops(stops.map((x, j) => (j === i ? v : x)))} /></div>
+          <div className={`grow field ${f.errors[`stop${i}`] ? 'invalid' : ''}`} data-field={`stop${i}`}>
+            <CityInput id={`stop-${i}`} value={s} onChange={(v) => { setStops(stops.map((x, j) => (j === i ? v : x))); f.clear(`stop${i}`); }} />
+            {f.errors[`stop${i}`] ? <span className="small err field-error">{f.errors[`stop${i}`]}</span> : null}
+          </div>
           {stops.length > 2 && i > 0 && i < stops.length - 1 ? <Button small kind="ghost" onClick={() => setStops(stops.filter((_, j) => j !== i))}>{t('removeStop')}</Button> : null}
         </div>
       ))}
       {stops.length < 8 ? <button type="button" className="btn ghost small" id="add-stop" onClick={() => setStops([...stops.slice(0, -1), '', stops[stops.length - 1]!])}>{t('addStop')}</button> : null}
       <div className="grid2">
-        <Field label={t('departure')}><input id="depart" type="datetime-local" value={depart} onChange={(e) => setDepart(e.target.value)} /></Field>
+        <Field name="depart" error={f.errors.depart} label={t('departure')}><input id="depart" type="datetime-local" value={depart} onChange={(e) => { setDepart(e.target.value); f.clear('depart'); }} /></Field>
         <Field label={t('space')}>
           <select id="space" value={space} onChange={(e) => setSpace(e.target.value)}>
             <option value="quarter">{t('space_quarter')}</option>
@@ -80,15 +86,21 @@ function NewTrip({ onPosted }: { onPosted: (t: Trip) => void }) {
       </div>
       <Field label={t('note')}><input value={note} maxLength={200} onChange={(e) => setNote(e.target.value)} /></Field>
       {parsed.every(Boolean) ? <RouteMap routes={[{ id: 'new', stops: parsed.map((c) => c!), highlight: true }]} height={200} /> : null}
-      <Button kind="primary" id="publish-trip" disabled={!valid} onClick={async () => {
+      <ErrorSummary errors={f.errors} labels={labels} />
+      <Button kind="primary" id="publish-trip" onClick={async () => {
         setError(null);
+        const errs: Errors = {};
+        stops.forEach((s, i) => { if (!parsed[i]) errs[`stop${i}`] = s.trim() ? t('errCity') : t('errRequired'); });
+        const dt = depart ? new Date(depart).getTime() : NaN;
+        errs.depart = !depart || Number.isNaN(dt) ? t('errRequired') : dt < Date.now() - 5 * 60_000 ? t('errPast') : dt > Date.now() + 30 * 86_400_000 ? t('errTooFar') : '';
+        if (!f.check(errs)) return;
         try {
           const tr = await api.createTrip({ stops: parsed.map((c) => ({ city: c!.city, province: c!.province })), departAt: new Date(depart).toISOString(), space, ...(note ? { note } : {}) });
           setStops(['', '']);
           setNote('');
           onPosted(tr);
         } catch (e) {
-          setError(err(e));
+          if (!f.fromServer(e, { in_the_past: 'depart', too_far: 'depart' }, { departAt: 'depart' })) setError(err(e));
         }
       }}>{t('publishTrip')}</Button>
       {error ? <p className="small err">{error}</p> : null}

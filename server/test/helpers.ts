@@ -151,18 +151,20 @@ export const places = {
 
 
 /** Registers and approves a driver through the real endpoints (admin approves). */
-export async function onboardDriver(app: TestApp, phone: string, o: { name: string; tier: 'basic' | 'pro'; vehicle?: 'pickup' | 'cargo_van'; homeCity?: string; home?: { lat: number; lng: number } }) {
+export async function onboardDriver(app: TestApp, phone: string, o: { name: string; tier: 'basic' | 'pro'; vehicle?: 'pickup' | 'cargo_van'; homeCity?: string; home?: { lat: number; lng: number }; radiusKm?: number; personalPolicy?: boolean; approve?: 'one-by-one' | 'all' | false }) {
   const admin = await signIn(app, ADMIN_PHONE);
   const s = await signIn(app, phone);
   const up = async () => (await s.api.post('/v1/uploads?purpose=document', JPEG, { 'Content-Type': 'image/jpeg' })).key as string;
   await s.api.patch('/v1/me', { name: o.name, email: `${o.name.split(' ')[0]!.toLowerCase()}${phone.slice(-4)}@example.com`, acceptTerms: true });
   await s.api.post('/v1/driver');
-  await s.api.patch('/v1/driver', { legalName: o.name, address: '10220 104 Ave NW, Edmonton AB', dateOfBirth: '1988-04-12', homeCity: o.homeCity ?? 'Edmonton', home: o.home ?? { lat: 53.5461, lng: -113.4938 }, radiusKm: 50 });
+  await s.api.patch('/v1/driver', { legalName: o.name, address: '10220 104 Ave NW, Edmonton AB', dateOfBirth: '1988-04-12', homeCity: o.homeCity ?? 'Edmonton', home: o.home ?? { lat: 53.5461, lng: -113.4938 }, radiusKm: o.radiusKm ?? 50 });
   const vehicle = o.vehicle ?? 'pickup';
   await s.api.post('/v1/driver/vehicles', { type: vehicle, make: vehicle === 'pickup' ? 'Ram' : 'Ford', model: vehicle === 'pickup' ? '1500' : 'Transit', year: 2021, plate: 'CTX' + phone.slice(-4), registeredWeightKg: 3200, hasTrailer: false, equipment: ['straps'] });
   const docs: Record<string, unknown>[] = [
-    { kind: 'license_front' }, { kind: 'license_back' }, { kind: 'registration' }, { kind: 'background_check' },
-    { kind: o.tier === 'pro' ? 'insurance_commercial' : 'insurance_endorsement', insurer: 'Intact', policyNumber: 'P-' + phone.slice(-4), expiresOn: '2027-06-30' },
+    { kind: 'license_front' }, { kind: 'license_back' }, { kind: 'registration' }, { kind: 'background_check' }, { kind: 'vehicle_side' }, { kind: 'vehicle_rear' },
+    o.personalPolicy
+      ? { kind: 'insurance_auto', insurer: 'Intact', policyNumber: 'A-' + phone.slice(-4), expiresOn: '2027-06-30', riskAck: true }
+      : { kind: o.tier === 'pro' ? 'insurance_commercial' : 'insurance_endorsement', insurer: 'Intact', policyNumber: 'P-' + phone.slice(-4), expiresOn: '2027-06-30' },
   ];
   if (o.tier === 'pro') docs.push({ kind: 'insurance_cargo', insurer: 'Aviva', policyNumber: 'C-1', coverageCents: 2_500_000, expiresOn: '2027-06-30' });
   for (const d of docs) await s.api.post('/v1/driver/documents', { ...d, fileKey: await up() });
@@ -175,9 +177,12 @@ export async function onboardDriver(app: TestApp, phone: string, o: { name: stri
   const sessionId = [...app.payments.identity.entries()].find(([, u]) => u === me.id)![0];
   await client(app.url).post('/webhooks/stripe', { id: 'evt_id_' + phone, type: 'identity.verification_session.verified', data: { object: { id: sessionId, metadata: { user_id: me.id } } } });
   await s.api.post('/v1/driver/payouts/refresh');
-  const detail = await admin.api.get(`/v1/admin/drivers/${me.id}`);
-  for (const d of detail.documents) await admin.api.post(`/v1/admin/documents/${d.id}/review`, { status: 'approved' });
-  await admin.api.post(`/v1/admin/drivers/${me.id}/decision`, { status: 'approved', tier: o.tier, backgroundStatus: 'clear' });
+  if (o.approve === 'all') await admin.api.post(`/v1/admin/drivers/${me.id}/approve-all`, { tier: o.tier });
+  else if (o.approve !== false) {
+    const detail = await admin.api.get(`/v1/admin/drivers/${me.id}`);
+    for (const d of detail.documents) await admin.api.post(`/v1/admin/documents/${d.id}/review`, { status: 'approved' });
+    await admin.api.post(`/v1/admin/drivers/${me.id}/decision`, { status: 'approved', tier: o.tier });
+  }
   return { ...s, id: me.id as string };
 }
 

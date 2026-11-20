@@ -3,6 +3,7 @@ import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'rea
 import { api } from './api';
 import { Link, navigate, useApp } from './app';
 import { dayTime, money, placeFromGoogle, type PlaceValue } from './format';
+import { LANGS, type Lang } from './i18n';
 import type { City, OrderStatus, Size, TripOption } from './types';
 
 export function Button({ children, kind = 'secondary', small, busy, disabled, onClick, type = 'button', className = '', ...rest }: {
@@ -34,14 +35,27 @@ export function Button({ children, kind = 'secondary', small, busy, disabled, on
   );
 }
 
-export function Field({ label, hint, children, error }: { label: ReactNode; hint?: ReactNode; children: ReactNode; error?: string | null }) {
+export function Field({ label, hint, children, error, name }: { label: ReactNode; hint?: ReactNode; children: ReactNode; error?: string | null; name?: string }) {
   return (
-    <label className="field">
+    <label className={`field ${error ? 'invalid' : ''}`} data-field={name}>
       <span className="label">{label}</span>
       {children}
       {hint ? <span className="small muted">{hint}</span> : null}
-      {error ? <span className="small err">{error}</span> : null}
+      {error ? <span className="small err field-error">{error}</span> : null}
     </label>
+  );
+}
+
+/** A checkbox row that can be marked as missing. */
+export function Check({ checked, onChange, children, error, name, id }: { checked: boolean; onChange: (v: boolean) => void; children: ReactNode; error?: string | null; name?: string; id?: string }) {
+  return (
+    <div className={`check-wrap ${error ? 'invalid' : ''}`} data-field={name}>
+      <label className="check">
+        <input id={id} type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} />
+        <span>{children}</span>
+      </label>
+      {error ? <span className="small err field-error">{error}</span> : null}
+    </div>
   );
 }
 
@@ -172,7 +186,7 @@ const newSession = () => Math.random().toString(36).slice(2) + Date.now().toStri
  * Address input. With a Google key: live suggestions limited to Canada (exact coordinates).
  * Without one: street address + city from the list (city-centre coordinates).
  */
-export function PlaceInput({ label, value, onChange, idPrefix, defaultCity = '' }: { label: string; value: PlaceValue | null; onChange: (p: PlaceValue | null) => void; idPrefix: string; defaultCity?: string }) {
+export function PlaceInput({ label, value, onChange, idPrefix, defaultCity = '', error, name }: { label: string; value: PlaceValue | null; onChange: (p: PlaceValue | null) => void; idPrefix: string; defaultCity?: string; error?: string | null; name?: string }) {
   const { site, t, lang, cities } = useApp();
   const key = site?.googleMapsKey;
   const [street, setStreet] = useState(value?.address ?? '');
@@ -185,18 +199,19 @@ export function PlaceInput({ label, value, onChange, idPrefix, defaultCity = '' 
     const emit = (s: string, c: City | null) => onChange(c && s.trim().length >= 3 ? { address: s.trim(), city: c.city, province: c.province, lat: c.lat, lng: c.lng } : null);
     const cityOf = (label: string) => cities.find((c) => cityLabel(c) === label) ?? null;
     return (
-      <fieldset className="field">
+      <fieldset className={`field ${error ? 'invalid' : ''}`} data-field={name}>
         <legend className="label">{label}</legend>
         <div className="grid-addr">
           <input id={`${idPrefix}-street`} aria-label={`${label}: ${t('street')}`} value={street} placeholder={t('streetPh')} autoComplete="street-address"
             onChange={(e) => { setStreet(e.target.value); emit(e.target.value, cityOf(cityText)); }} />
           <CityInput id={`${idPrefix}-city`} value={cityText} onChange={(v, c) => { setCityText(v); emit(street, c); }} />
         </div>
+        {error ? <span className="small err field-error">{error}</span> : null}
       </fieldset>
     );
   }
   return (
-    <div className="field combo">
+    <div className={`field combo ${error ? 'invalid' : ''}`} data-field={name}>
       <span className="label">{label}</span>
       <input id={`${idPrefix}-street`} value={street} placeholder={t('addressPh')} autoComplete="off" className={value ? 'ok' : ''}
         onChange={(e) => {
@@ -225,19 +240,20 @@ export function PlaceInput({ label, value, onChange, idPrefix, defaultCity = '' 
           ))}
         </ul>
       ) : null}
+      {error ? <span className="small err field-error">{error}</span> : null}
     </div>
   );
 }
 
 // ---------------------------------------------------------------- uploads
 
-export function PhotoUpload({ purpose, keys, onChange, max = 6, label, accept = 'image/*', id }: { purpose: 'order' | 'pickup' | 'delivery' | 'document'; keys: { key: string; url: string }[]; onChange: (k: { key: string; url: string }[]) => void; max?: number; label: string; accept?: string; id?: string }) {
+export function PhotoUpload({ purpose, keys, onChange, max = 6, label, accept = 'image/*', id, invalid, name }: { purpose: 'order' | 'pickup' | 'delivery' | 'document'; keys: { key: string; url: string }[]; onChange: (k: { key: string; url: string }[]) => void; max?: number; label: string; accept?: string; id?: string; invalid?: string | null; name?: string }) {
   const { err } = useApp();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const inputId = useId();
   return (
-    <div className="field">
+    <div className={`field ${invalid ? 'invalid' : ''}`} data-field={name}>
       <div className="thumbs">
         {keys.map((k) => (
           <div key={k.key} className="thumb">
@@ -268,7 +284,7 @@ export function PhotoUpload({ purpose, keys, onChange, max = 6, label, accept = 
           setBusy(false);
         }
       }} />
-      {error ? <span className="small err">{error}</span> : null}
+      {error || invalid ? <span className="small err field-error">{error ?? invalid}</span> : null}
     </div>
   );
 }
@@ -391,4 +407,14 @@ export function useCityPair(initialFrom = '', initialTo = '') {
   const [from, setFrom] = useState(initialFrom);
   const [to, setTo] = useState(initialTo);
   return useMemo(() => ({ from, to, setFrom, setTo }), [from, to]);
+}
+
+/** Language menu: every language named in itself. */
+export function LangSelect({ id, compact }: { id?: string; compact?: boolean }) {
+  const { lang, setLang, t } = useApp();
+  return (
+    <select id={id} className={`lang-select ${compact ? 'compact' : ''}`} value={lang} aria-label={t('language')} onChange={(e) => setLang(e.target.value as Lang)}>
+      {LANGS.map((l) => <option key={l.code} value={l.code} lang={l.code} dir={l.dir}>{compact ? `${l.code.toUpperCase()} · ${l.name}` : l.name}</option>)}
+    </select>
+  );
 }

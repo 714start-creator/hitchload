@@ -4,6 +4,9 @@ import type { Ctx } from '../ctx.js';
 import { maybeOne, one } from '../db/db.js';
 import { safeEqual, sha256, signToken, verifyToken } from '../lib/crypto.js';
 import { layout } from '../providers/email.js';
+import { dispatchOrder } from './dispatch.js';
+import { notify } from './notify.js';
+import type { OrderRow } from './dto.js';
 import { isValidSubscription } from '../providers/webpush.js';
 import { bad, HttpError } from '../lib/errors.js';
 import { normalizePhone } from '../lib/phone.js';
@@ -51,7 +54,7 @@ export async function getMe(ctx: Ctx, userId: string) {
 export const profileSchema = z.object({
   name: z.string().trim().min(1).max(80).optional(),
   email: z.string().trim().email().max(120).optional(),
-  lang: z.enum(['ru', 'en', 'uk', 'fr']).optional(),
+  lang: z.enum(['en', 'ru', 'uk', 'fr', 'de', 'it', 'he', 'pa']).optional(),
   acceptTerms: z.literal(true).optional(),
   emailAlerts: z.boolean().optional(),
 });
@@ -158,6 +161,19 @@ export async function syncCard(ctx: Ctx, userId: string) {
   const card = await ctx.payments.latestCard(u.stripe_customer_id);
   if (!card) throw bad('no_card', 'No card was saved');
   await ctx.db.query('UPDATE users SET payment_method_id = $2, card_brand = $3, card_last4 = $4 WHERE id = $1', [userId, card.paymentMethodId, card.brand, card.last4]);
+  // orders locked by a failed payment open to drivers again with the new card
+  if (card.paymentMethodId !== u.payment_method_id || card.last4 !== u.card_last4) {
+    const reopened = await ctx.db.query<OrderRow>(
+      `UPDATE orders SET payment_error = NULL, updated_at = now() WHERE client_id = $1 AND status = 'open' AND payment_error IS NOT NULL RETURNING *`,
+      [userId],
+    );
+    for (const o of reopened) {
+      await ctx.db.query(`INSERT INTO order_events(order_id, actor_id, type, data) VALUES ($1, $2, 'card_replaced', '{}')`, [o.id, userId]);
+      ctx.hub.publish(userId, 'order', { orderId: o.id, status: o.status });
+      await dispatchOrder(ctx, o, 'all');
+    }
+    if (reopened.length) await notify(ctx, userId, 'orders_reopened', { count: reopened.length }, { link: '/orders' });
+  }
   return getMe(ctx, userId);
 }
 

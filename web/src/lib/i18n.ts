@@ -1,5 +1,26 @@
-// Site text in English and Russian. Add French by copying `en` (needed before marketing in Quebec).
-export type Lang = 'en' | 'ru';
+// Site text. English is the source; every other language falls back to English for any missing key.
+import { de, deErr } from './lang/de';
+import { fr, frErr } from './lang/fr';
+import { he, heErr } from './lang/he';
+import { it, itErr } from './lang/it';
+import { pa, paErr } from './lang/pa';
+import { uk, ukErr } from './lang/uk';
+
+export type Lang = 'en' | 'ru' | 'uk' | 'fr' | 'de' | 'it' | 'he' | 'pa';
+
+/** Shown in the language menu, each in its own language. */
+export const LANGS: { code: Lang; name: string; dir: 'ltr' | 'rtl'; locale: string }[] = [
+  { code: 'en', name: 'English', dir: 'ltr', locale: 'en-CA' },
+  { code: 'fr', name: 'Français', dir: 'ltr', locale: 'fr-CA' },
+  { code: 'ru', name: 'Русский', dir: 'ltr', locale: 'ru-RU' },
+  { code: 'uk', name: 'Українська', dir: 'ltr', locale: 'uk-UA' },
+  { code: 'de', name: 'Deutsch', dir: 'ltr', locale: 'de-DE' },
+  { code: 'it', name: 'Italiano', dir: 'ltr', locale: 'it-IT' },
+  { code: 'he', name: 'עברית', dir: 'rtl', locale: 'he-IL' },
+  { code: 'pa', name: 'ਪੰਜਾਬੀ', dir: 'ltr', locale: 'pa-IN' },
+];
+export const isLang = (s: unknown): s is Lang => LANGS.some((l) => l.code === s);
+export const langInfo = (l: Lang) => LANGS.find((x) => x.code === l) ?? LANGS[0]!;
 
 const en = {
   // brand & nav
@@ -376,12 +397,88 @@ const en = {
   ck_payouts: 'Payout account', ck_documents_approved: 'Documents reviewed by our team',
   docFrontBack: 'Driver’s licence',
   insuranceDoc: 'Insurance policy',
-  insuranceKindHint: 'A personal policy alone does not cover paid deliveries. Upload a delivery endorsement or a commercial policy.',
+  insuranceKindHint: 'A delivery endorsement or a commercial policy lets you carry items of any value up to its limit. A personal policy is accepted for items up to $1,000.',
   startDriver: 'Start the application',
   driverProfile: 'Driver profile',
   refreshStatus: 'Check status',
   pendingNote: 'We will email you and send a notification when the review is done.',
   approvedNote: 'You can take loads and post trips.',
+  fixFields: "Please fill in or fix: {list}",
+  errRequired: "Fill this in",
+  errCheckField: "Check this field",
+  errLegalName: "Enter your first and last name as on your licence",
+  errAge: "Drivers must be at least 18",
+  errAddress: "Enter your street address",
+  errCity: "Choose a city from the list",
+  errRadius: "Enter a number from 5 to 300",
+  errYear: "Enter a year from 1990 to {max}",
+  errPlate: "Enter the licence plate",
+  errGvw: "Enter the registered weight in kg (500 to 40,000)",
+  errUploadThis: "Upload this photo",
+  errExpired: "This date has already passed",
+  errCoverage: "Enter the coverage limit in dollars",
+  errRiskAck: "Tick this box to use a personal policy",
+  errInsuranceMissing: "Add an insurance policy",
+  errAgree: "Tick this box to continue",
+  errPickAnswer: "Pick an answer",
+  errPlace: "Enter the street address and choose a city from the list",
+  errWhat: "Say what you are sending",
+  errValue: "Enter the value in dollars (0 if it has no value)",
+  errPhone: "Enter a 10-digit mobile number",
+  errPrice: "The price must be at least $5",
+  errWindowOrder: "The end time must be later than the start time",
+  errWindowPast: "This time has already passed. Pick a later time",
+  errWindowServer: "Check the date and times: the window must be in the future, up to 30 days ahead and no longer than 3 days",
+  errCode: "Enter the code from the SMS",
+  errCodeWrong: "The code is wrong or has expired",
+  errName: "Enter your name",
+  errEmail: "Enter an email like name@example.com",
+  errTerms: "You need to accept the terms to continue",
+  errPast: "This time has already passed",
+  errTooFar: "Up to 30 days ahead",
+  errTaxNumber: "Enter all 9 digits",
+  termsShort: "Terms",
+  agreeShort: "Agreement with the rules",
+  questionN: "question {n}",
+  stopFrom: "From",
+  stopTo: "To",
+  stopN: "stop {n}",
+  policyFile: "Policy file",
+  riskAckShort: "Personal policy confirmation",
+  riskAck: "I understand that my personal policy may not cover paid deliveries, and I am responsible for this myself.",
+  personalPolicyNote: "With a personal auto policy (Basic) you can take items worth up to $1,000. For more valuable items, add a delivery endorsement or a commercial policy.",
+  dk_vehicle_side: "Vehicle photo: side",
+  dk_vehicle_rear: "Vehicle photo: rear, plate visible",
+  vehicleSideHow: "Stand to the side so the whole vehicle fits in the frame, both wheels and both ends.",
+  vehicleRearHow: "Stand straight behind the vehicle. The licence plate must be sharp and readable.",
+  vehiclePhotosTitle: "Vehicle photos (required)",
+  vehiclePhotosText: "Two photos: one from the side and one from behind with the plate. Shippers see them, and we check that the plate matches the registration.",
+  exampleLabel: "Example",
+  ck_vehicle_photos: "Vehicle photos: side and rear",
+  payFailShort: "Card declined: drivers cannot take this order. Open it to fix.",
+  payFailTitle: "Your bank card was declined. Payment for this order did not go through.",
+  payReasonLabel: "Reason from the bank:",
+  payFailText: "Until the card works, drivers cannot take this order, and payments for your other open orders will not go through either. As soon as you save a working card, your orders go back to drivers automatically. You do not need to post them again.",
+  payFix1: "Replace the card below, or",
+  payFix2: "call your bank and ask them to allow the payment, then save the card again,",
+  payFix3: "check that the card is not expired and has enough funds.",
+  payCardOnFile: "Card on file: {card}",
+  payFixed: "Card saved. Your orders are open to drivers again.",
+  payReason_insufficient_funds: "There are not enough funds on the card.",
+  payReason_expired_card: "The card has expired.",
+  payReason_incorrect_cvc: "The card security code (CVC) is incorrect.",
+  payReason_authentication_required: "Your bank requires you to approve the payment (3-D Secure). Save the card again and approve it in your bank app.",
+  payReason_lost_card: "The bank has blocked the card as lost.",
+  payReason_stolen_card: "The bank has blocked the card as stolen.",
+  payReason_pickup_card: "The bank has blocked the card.",
+  payReason_do_not_honor: "The bank declined without giving a reason. Please call your bank.",
+  payReason_generic_decline: "The bank declined without giving a reason. Please call your bank.",
+  payReason_card_declined: "The bank declined the charge.",
+  payReason_processing_error: "A temporary error at the bank. Try again in a few minutes.",
+  payReason_card_velocity_exceeded: "The card has reached its transaction limit.",
+  payReason_card_missing: "The saved card was not found. Add a card again.",
+  payReason_other: "The bank declined the payment.",
+  lockedClientPayment: "The customer’s bank card was declined, so this order cannot be taken right now. We have told the customer. The order opens again as soon as they replace the card.",
   // common
   loading: 'Loading…',
   error: 'Something went wrong',
@@ -401,7 +498,7 @@ const en = {
   signInToContinue: 'Sign in to continue',
 };
 
-type Dict = typeof en;
+export type Dict = typeof en;
 
 const ru: Dict = {
   tagline: 'Отправьте с водителем, который и так едет туда',
@@ -766,12 +863,88 @@ const ru: Dict = {
   ck_payouts: 'Счёт для выплат', ck_documents_approved: 'Документы проверены нашей командой',
   docFrontBack: 'Водительские права',
   insuranceDoc: 'Страховой полис',
-  insuranceKindHint: 'Личный полис сам по себе не покрывает платные доставки. Загрузите дополнение на доставку или коммерческий полис.',
+  insuranceKindHint: 'С дополнением на доставку или коммерческим полисом можно возить грузы любой стоимости в пределах лимита полиса. Личный полис принимается для грузов до $1 000.',
   startDriver: 'Начать анкету',
   driverProfile: 'Анкета водителя',
   refreshStatus: 'Обновить статус',
   pendingNote: 'Пришлём письмо и уведомление, когда проверка закончится.',
   approvedNote: 'Можно брать грузы и публиковать поездки.',
+  fixFields: "Заполните или исправьте: {list}",
+  errRequired: "Заполните это поле",
+  errCheckField: "Проверьте это поле",
+  errLegalName: "Укажите имя и фамилию, как в правах",
+  errAge: "Водителю должно быть не меньше 18 лет",
+  errAddress: "Укажите улицу и дом",
+  errCity: "Выберите город из списка",
+  errRadius: "Введите число от 5 до 300",
+  errYear: "Введите год от 1990 до {max}",
+  errPlate: "Укажите номерной знак",
+  errGvw: "Укажите разрешённую массу в кг (от 500 до 40 000)",
+  errUploadThis: "Загрузите это фото",
+  errExpired: "Эта дата уже прошла",
+  errCoverage: "Укажите лимит покрытия в долларах",
+  errRiskAck: "Отметьте этот пункт, чтобы использовать личный полис",
+  errInsuranceMissing: "Добавьте страховой полис",
+  errAgree: "Отметьте этот пункт, чтобы продолжить",
+  errPickAnswer: "Выберите ответ",
+  errPlace: "Укажите улицу и дом и выберите город из списка",
+  errWhat: "Напишите, что отправляете",
+  errValue: "Укажите стоимость в долларах (0, если без ценности)",
+  errPhone: "Введите 10-значный номер мобильного",
+  errPrice: "Цена должна быть не меньше $5",
+  errWindowOrder: "Время окончания должно быть позже начала",
+  errWindowPast: "Это время уже прошло. Выберите время позже",
+  errWindowServer: "Проверьте дату и время: окно должно быть в будущем, не дальше 30 дней и не длиннее 3 дней",
+  errCode: "Введите код из SMS",
+  errCodeWrong: "Код неверный или устарел",
+  errName: "Укажите имя",
+  errEmail: "Введите email вида name@example.com",
+  errTerms: "Чтобы продолжить, нужно принять условия",
+  errPast: "Это время уже прошло",
+  errTooFar: "Не дальше чем на 30 дней вперёд",
+  errTaxNumber: "Введите все 9 цифр",
+  termsShort: "Условия",
+  agreeShort: "Согласие с правилами",
+  questionN: "вопрос {n}",
+  stopFrom: "Откуда",
+  stopTo: "Куда",
+  stopN: "остановка {n}",
+  policyFile: "Файл полиса",
+  riskAckShort: "Подтверждение для личного полиса",
+  riskAck: "Понимаю, что мой личный полис может не покрывать платные доставки, и отвечаю за это сам.",
+  personalPolicyNote: "С личным автополисом (Basic) можно брать грузы стоимостью до $1 000. Для более ценных грузов добавьте дополнение на доставку или коммерческий полис.",
+  dk_vehicle_side: "Фото машины сбоку",
+  dk_vehicle_rear: "Фото машины сзади, с номером",
+  vehicleSideHow: "Встаньте сбоку, чтобы в кадр поместилась вся машина: оба колеса, перед и зад.",
+  vehicleRearHow: "Встаньте ровно позади машины. Номер должен быть чётким и читаемым.",
+  vehiclePhotosTitle: "Фото машины (обязательно)",
+  vehiclePhotosText: "Два фото: сбоку и сзади с номером. Их видят заказчики, а мы сверяем номер с регистрацией.",
+  exampleLabel: "Пример",
+  ck_vehicle_photos: "Фото машины сбоку и сзади",
+  payFailShort: "Карта отклонена: водители не могут взять этот заказ. Откройте, чтобы исправить.",
+  payFailTitle: "Ваша банковская карта отклонена. Оплата по этому заказу не прошла.",
+  payReasonLabel: "Причина от банка:",
+  payFailText: "Пока карта не работает, водители не могут взять этот заказ, и оплата по другим вашим открытым заказам тоже не пройдёт. Как только вы сохраните рабочую карту, заказы сами снова станут доступны водителям. Публиковать их заново не нужно.",
+  payFix1: "замените карту ниже, или",
+  payFix2: "позвоните в банк и попросите разрешить платёж, потом сохраните карту ещё раз,",
+  payFix3: "проверьте, что срок карты не истёк и на ней достаточно средств.",
+  payCardOnFile: "Сохранённая карта: {card}",
+  payFixed: "Карта сохранена. Заказы снова доступны водителям.",
+  payReason_insufficient_funds: "На карте недостаточно средств.",
+  payReason_expired_card: "Срок действия карты истёк.",
+  payReason_incorrect_cvc: "Неверный CVC-код карты.",
+  payReason_authentication_required: "Банк требует подтвердить платёж (3-D Secure). Сохраните карту ещё раз и подтвердите в приложении банка.",
+  payReason_lost_card: "Банк заблокировал карту как утерянную.",
+  payReason_stolen_card: "Банк заблокировал карту как украденную.",
+  payReason_pickup_card: "Банк заблокировал карту.",
+  payReason_do_not_honor: "Банк отказал без объяснения причин. Позвоните в банк.",
+  payReason_generic_decline: "Банк отказал без объяснения причин. Позвоните в банк.",
+  payReason_card_declined: "Банк отказал в списании.",
+  payReason_processing_error: "Временная ошибка банка. Попробуйте через несколько минут.",
+  payReason_card_velocity_exceeded: "Превышен лимит операций по карте.",
+  payReason_card_missing: "Сохранённая карта не найдена. Добавьте карту заново.",
+  payReason_other: "Банк отклонил платёж.",
+  lockedClientPayment: "Банковская карта заказчика отклонена, поэтому сейчас этот заказ взять нельзя. Мы сообщили заказчику. Заказ снова откроется, как только он заменит карту.",
   loading: 'Загрузка…',
   error: 'Что-то пошло не так',
   retry: 'Повторить',
@@ -791,15 +964,15 @@ const ru: Dict = {
 };
 
 export type Key = keyof Dict;
-const dicts: Record<Lang, Dict> = { en, ru };
+const dicts: Record<Lang, Partial<Dict>> = { en, ru, uk, fr, de, it, he, pa };
 
 export function translate(lang: Lang, key: Key, vars?: Record<string, string | number>): string {
-  const s = dicts[lang][key] ?? en[key] ?? key;
+  const s = dicts[lang]?.[key] ?? en[key] ?? key;
   return vars ? s.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? '')) : s;
 }
 
 /** Server error codes → readable text; unknown codes fall back to the server's English message. */
-const ERR: Record<string, Record<Lang, string>> = {
+const ERR: Record<string, { en: string; ru: string }> = {
   network: { en: 'No connection to the server. Check your internet and try again.', ru: 'Нет связи с сервером. Проверьте интернет и попробуйте ещё раз.' },
   invalid_phone: { en: 'Enter a 10-digit Canadian or US mobile number.', ru: 'Введите 10-значный номер мобильного (Канада или США).' },
   invalid_code: { en: 'The code is wrong or has expired.', ru: 'Код неверный или устарел.' },
@@ -811,7 +984,9 @@ const ERR: Record<string, Record<Lang, string>> = {
   order_taken: { en: 'Another driver has just taken this order.', ru: 'Этот заказ только что взял другой водитель.' },
   pro_window: { en: 'Pro drivers see this order first. It opens for you shortly.', ru: 'Сначала заказ видят Pro-водители. Скоро он откроется для вас.' },
   cargo_limit: { en: 'The item value is above your insurance limit.', ru: 'Стоимость груза выше лимита вашей страховки.' },
-  payment_failed: { en: 'The customer’s card was declined. The order is open again.', ru: 'Карта клиента отклонена. Заказ снова открыт.' },
+  payment_failed: { en: 'The customer’s bank card was declined, so the payment for this order did not go through. The order is back in the list and we have told the customer.', ru: 'Банковская карта заказчика отклонена, оплата по заказу не прошла. Заказ вернулся в список, мы сообщили заказчику.' },
+  client_payment: { en: 'The customer’s bank card was declined. This order opens again when they replace the card.', ru: 'Банковская карта заказчика отклонена. Заказ снова откроется, когда он заменит карту.' },
+  risk_ack_required: { en: 'Tick the box confirming that your personal policy may not cover paid deliveries.', ru: 'Отметьте пункт о том, что личный полис может не покрывать платные доставки.' },
   wrong_pin: { en: 'Wrong PIN.', ru: 'Неверный PIN.' },
   trip_unavailable: { en: 'This trip no longer fits the order.', ru: 'Эта поездка больше не подходит к заказу.' },
   request_pending: { en: 'You already asked a driver. Wait for the answer.', ru: 'Вы уже отправили запрос водителю. Дождитесь ответа.' },
@@ -839,8 +1014,17 @@ const ERR: Record<string, Record<Lang, string>> = {
   account_blocked: { en: 'This account is blocked. Contact support.', ru: 'Аккаунт заблокирован. Напишите в поддержку.' },
 };
 
+export type ErrDict = Partial<Record<string, string>>;
+const ERRS: Partial<Record<Lang, ErrDict>> = { uk: ukErr, fr: frErr, de: deErr, it: itErr, he: heErr, pa: paErr };
+
 export function errorText(lang: Lang, e: unknown): string {
   const err = e as { code?: string; message?: string };
-  if (err?.code && ERR[err.code]) return ERR[err.code]![lang];
-  return err?.message || (lang === 'ru' ? 'Что-то пошло не так' : 'Something went wrong');
+  if (err?.code && ERR[err.code]) {
+    const row = ERR[err.code]!;
+    return lang === 'ru' ? row.ru : lang === 'en' ? row.en : ERRS[lang]?.[err.code] ?? row.en;
+  }
+  return err?.message || translate(lang, 'error');
 }
+
+/** Codes with translated texts, for the language files. */
+export const ERROR_CODES = () => Object.keys(ERR);

@@ -2,6 +2,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { AppProvider, Link, match, navigate, useApp, useLocation } from './lib/app';
+import { LangSelect } from './lib/ui';
 import { registerSW, resyncPush } from './lib/push';
 import { Account, Notifications } from './pages/Account';
 import { Home } from './pages/Home';
@@ -46,7 +47,7 @@ const ROUTES: Route[] = [
 ];
 
 function Header() {
-  const { me, t, lang, setLang, site, unread } = useApp();
+  const { me, t, site, unread } = useApp();
   const { path } = useLocation();
   const [open, setOpen] = useState(false);
   const isDriver = Boolean(me?.driver);
@@ -69,7 +70,7 @@ function Header() {
           ))}
         </nav>
         <div className="head-tools">
-          <button className="btn small ghost" onClick={() => setLang(lang === 'en' ? 'ru' : 'en')} aria-label="Language">{t('langSwitch')}</button>
+          <LangSelect id="lang-head" compact />
           {me ? (
             <>
               <Link to="/notifications" className="bell" aria-label={t('navNotifications')}>

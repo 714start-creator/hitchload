@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api } from '../../lib/api';
 import { useApp, useLoad } from '../../lib/app';
 import { money } from '../../lib/format';
+import { ErrorSummary, useFormErrors } from '../../lib/form';
 import { Button, Card, ErrorBox, Field, Loading, Notice, PageHead, RequireAuth } from '../../lib/ui';
 import { DriverNav } from './Feed';
 import { Link } from '../../lib/app';
@@ -43,6 +44,7 @@ function TaxPage() {
   const [error, setError] = useState<unknown>(null);
   const [done, setDone] = useState(false);
   const info = me?.driver?.taxInfo;
+  const f = useFormErrors();
   return (
     <div className="page narrow-page">
       <PageHead title={t('taxTitle')} text={t('taxText')} back="/driver/earnings" />
@@ -53,17 +55,19 @@ function TaxPage() {
           <Button small kind={type === 'sin' ? 'primary' : 'secondary'} onClick={() => setType('sin')}>{t('sin')}</Button>
           <Button small kind={type === 'bn' ? 'primary' : 'secondary'} onClick={() => setType('bn')}>{t('bn')}</Button>
         </div>
-        <Field label={type === 'sin' ? t('sin') : t('bn')}><input id="tax-number" inputMode="numeric" autoComplete="off" value={number} onChange={(e) => setNumber(e.target.value)} /></Field>
-        <Field label={t('gst')}><input value={gst} onChange={(e) => setGst(e.target.value)} /></Field>
-        <Button kind="primary" disabled={number.replace(/\D/g, '').length < 9} onClick={async () => {
+        <Field name="number" error={f.errors.number} label={type === 'sin' ? t('sin') : t('bn')}><input id="tax-number" inputMode="numeric" autoComplete="off" value={number} onChange={(e) => { setNumber(e.target.value); f.clear('number'); }} /></Field>
+        <Field name="gst" error={f.errors.gst} label={t('gst')}><input value={gst} onChange={(e) => { setGst(e.target.value); f.clear('gst'); }} /></Field>
+        <ErrorSummary errors={f.errors} labels={{ number: type === 'sin' ? t('sin') : t('bn'), gst: t('gst') }} />
+        <Button kind="primary" onClick={async () => {
           setError(null);
+          if (!f.check({ number: !number.trim() ? t('errRequired') : number.replace(/\D/g, '').length < 9 ? t('errTaxNumber') : '' })) return;
           try {
             await api.saveTax({ type, number, ...(gst ? { gstNumber: gst } : {}) });
             await refreshMe();
             setNumber('');
             setDone(true);
           } catch (e) {
-            setError(e);
+            if (!f.fromServer(e, { invalid_sin: 'number', invalid_bn: 'number', invalid_gst: 'gst' }, { number: 'number', gstNumber: 'gst' })) setError(e);
           }
         }}>{t('save')}</Button>
         <ErrorBox error={error} />

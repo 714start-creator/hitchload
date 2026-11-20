@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react';
 import { api, ApiError } from '../lib/api';
 import { Link, navigate, useApp, useLoad, useLocation, useNow } from '../lib/app';
+import { CardForm } from '../lib/card';
 import { Chat } from '../lib/chat';
 import { dayTime, dollarsToCents, money, windowText } from '../lib/format';
 import { RouteMap } from '../lib/map';
@@ -33,6 +34,7 @@ function OrdersList() {
               <StatusPill status={o.status} />
             </div>
             <RouteLine from={o.pickup.city} to={o.dropoff.city} sub={windowText(o.windowStart, o.windowEnd, lang)} />
+            {o.paymentError && o.status === 'open' ? <p className="small err">{t('payFailShort')}</p> : null}
             <div className="row between small">
               <span className="muted">{o.description || t(`size${o.size}`)}</span>
               <b className="money">{money(o.chargedCents ?? o.agreedCents ?? o.priceCents)}</b>
@@ -53,6 +55,7 @@ function OrderDetail({ id }: { id: string }) {
   const { query } = useLocation();
   const { data: o, error, reload } = useLoad(() => api.order(id), [id]);
   const [actErr, setActErr] = useState<string | null>(null);
+  const [cardFixed, setCardFixed] = useState(false);
   const now = useNow(o?.status === 'open');
   useEffect(() => onLive((e) => {
     if ((e.type === 'order' || e.type === 'driver_position') && e.data?.orderId === id) void reload();
@@ -89,8 +92,9 @@ function OrderDetail({ id }: { id: string }) {
             {o.description ? <p>{o.description}</p> : null}
             {o.photos.length ? <div className="thumbs">{o.photos.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer" className="thumb"><img src={u} alt="" /></a>)}</div> : null}
             <p className="small muted">{t('value').replace(/, \$$/, '')}: {money(o.declaredValueCents)}{o.insured ? ` · ${t('insuranceLine')} ✓` : ''}</p>
-            {o.paymentError && o.status === 'open' ? <Notice tone="bad">{o.paymentError}</Notice> : null}
           </Card>
+          {o.paymentError && o.status === 'open' ? <PaymentProblem code={o.paymentError} onFixed={async () => { setCardFixed(true); await reload(); }} /> : null}
+          {cardFixed && !o.paymentError ? <Notice tone="go">{t('payFixed')}</Notice> : null}
 
           {o.status === 'open' ? (
             <Card>
@@ -206,6 +210,30 @@ function CancelBox({ order, act }: { order: Order; act: (f: () => Promise<unknow
         <Button kind="ghost" onClick={() => setP(null)}>{t('keepOrder')}</Button>
       </div>
     </Card>
+  );
+}
+
+/** The client's card was declined when a driver confirmed: say why, what it means and fix it right here. */
+function PaymentProblem({ code, onFixed }: { code: string; onFixed: () => unknown }) {
+  const { t, me, refreshMe } = useApp();
+  const [open, setOpen] = useState(false);
+  const known = ['insufficient_funds', 'expired_card', 'incorrect_cvc', 'authentication_required', 'lost_card', 'stolen_card', 'pickup_card', 'do_not_honor', 'generic_decline', 'card_declined', 'processing_error', 'card_velocity_exceeded', 'card_missing'];
+  const reason = t(`payReason_${known.includes(code) ? code : 'other'}` as 'payReason_other');
+  return (
+    <div className="card pay-problem" role="alert" id="payment-problem">
+      <h3>{t('payFailTitle')}</h3>
+      <p><b>{t('payReasonLabel')}</b> {reason}</p>
+      <p>{t('payFailText')}</p>
+      <ul className="small">
+        <li>{t('payFix1')}</li>
+        <li>{t('payFix2')}</li>
+        <li>{t('payFix3')}</li>
+      </ul>
+      {me?.card ? <p className="small muted">{t('payCardOnFile', { card: `${me.card.brand.toUpperCase()} •••• ${me.card.last4}` })}</p> : null}
+      {open ? (
+        <CardForm onSaved={async () => { await refreshMe(); setOpen(false); await onFixed(); }} />
+      ) : <Button kind="primary" id="replace-card" onClick={() => setOpen(true)}>{t('replaceCard')}</Button>}
+    </div>
   );
 }
 

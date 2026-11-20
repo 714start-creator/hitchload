@@ -7,7 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { after, before, test } from 'node:test';
 import { chromium, type Browser, type BrowserContext, type Page } from 'playwright';
-import { customer, onboardDriver, places, startTestApp, type TestApp } from '../helpers.js';
+import { customer, onboardDriver, places, signIn, startTestApp, type TestApp } from '../helpers.js';
 
 let app: TestApp;
 let browser: Browser;
@@ -215,6 +215,17 @@ test('a new driver completes the application on the website', async () => {
   await signInUi(p, '7805550777', { name: 'Taras Melnyk', email: 'taras@example.com' });
   await p.waitForURL(/\/driver\/setup/);
   await p.click('button:has-text("Start the application")');
+  // pressing "Send for review" too early points at what is missing
+  await p.click('#submit-driver');
+  await p.locator('.error-summary', { hasText: 'Vehicle photos: side and rear' }).waitFor();
+  await p.locator('.checks li.err', { hasText: 'Personal details' }).waitFor();
+  assert.ok(await p.locator('details#sec-profile.invalid').count());
+  assert.ok(await p.locator('#doc-card-vehicle_side.invalid').count());
+  // saving an empty profile marks the fields in red with a reason
+  await p.click('#save-profile');
+  await p.locator('[data-field=address].invalid', { hasText: 'Enter your street address' }).waitFor();
+  await p.locator('[data-field=city].invalid', { hasText: 'Choose a city from the list' }).waitFor();
+  await p.locator('.error-summary', { hasText: 'Home address' }).waitFor();
   await p.fill('#legal-name', 'Taras Melnyk');
   await p.fill('#dob', '1985-02-03');
   await p.fill('#home-address', '10220 104 Ave NW, Edmonton AB');
@@ -227,18 +238,33 @@ test('a new driver completes the application on the website', async () => {
   await p.fill('#year', '2020');
   await p.fill('#plate', 'cxz123');
   await p.fill('#gvw', '3500');
+  await p.fill('#gvw', '');
   await p.click('#add-vehicle');
-  await p.locator('.checks li.done', { hasText: 'Vehicle' }).waitFor();
-  for (const k of ['license_front', 'license_back', 'registration', 'background_check']) {
+  await p.locator('[data-field=weight].invalid', { hasText: 'Enter the registered weight' }).waitFor();
+  await p.fill('#gvw', '3500');
+  await p.click('#add-vehicle');
+  await p.locator('.checks li.done', { hasText: 'Vehicle' }).first().waitFor();
+  await p.locator('#doc-card-vehicle_side svg[aria-label="Side view example"]').waitFor();
+  await p.locator('#doc-card-vehicle_rear svg[aria-label="Rear view example with plate"]').waitFor();
+  for (const k of ['license_front', 'license_back', 'registration', 'background_check', 'vehicle_side', 'vehicle_rear']) {
     await p.setInputFiles(`#doc-${k}`, PHOTO);
     await p.locator('.doc', { has: p.locator(`#doc-${k}`) }).locator('.pill', { hasText: 'Under review' }).waitFor();
   }
-  await p.selectOption('#ins-kind', 'insurance_endorsement');
+  await p.locator('.checks li.done', { hasText: 'Vehicle photos: side and rear' }).waitFor();
+  // personal auto policy: accepted only with the risk acknowledgement
+  await p.selectOption('#ins-kind', 'insurance_auto');
+  await p.getByText('With a personal auto policy (Basic) you can take items worth up to $1,000').waitFor();
+  await p.click('#ins-save');
+  await p.locator('[data-field=riskAck].invalid', { hasText: 'Tick this box to use a personal policy' }).waitFor();
+  await p.locator('[data-field=insurer].invalid').waitFor();
+  await p.locator('[data-field=file].invalid', { hasText: 'Upload this photo' }).waitFor();
   await p.fill('#ins-insurer', 'Intact');
   await p.fill('#ins-policy', 'P-777');
   await p.fill('#ins-expires', '2027-12-31');
   await p.setInputFiles('#ins-file', PHOTO);
-  await p.locator('#ins-save:not([disabled])').click();
+  await p.locator('#ins-file').locator('xpath=..').locator('img').waitFor().catch(() => undefined);
+  await p.check('#ins-risk-ack');
+  await p.click('#ins-save');
   await p.locator('.checks li.done', { hasText: 'Insurance that covers deliveries' }).waitFor();
   await p.click('button:has-text("Start the check")');
   await p.waitForURL(/\/driver\/setup\?done=identity/);
@@ -266,7 +292,20 @@ test('mobile layout, Russian, static pages and 404', async () => {
   const overflow = await p.evaluate<boolean>('document.documentElement.scrollWidth > window.innerWidth + 1');
   assert.equal(overflow, false, 'no horizontal scroll on a phone');
   await shot(p, 'site-10-mobile-home');
-  await p.click('button[aria-label=Language]');
+  assert.equal(await p.locator('#lang-head option').count(), 8);
+  await p.selectOption('#lang-head', 'he');
+  await p.getByRole('heading', { name: /שכבר נוסע לכיוון שלכם/ }).waitFor();
+  assert.equal(await p.evaluate<string>('document.documentElement.dir'), 'rtl');
+  assert.equal(await p.evaluate<boolean>('document.documentElement.scrollWidth > window.innerWidth + 1'), false, 'no horizontal scroll in RTL');
+  await shot(p, 'site-10b-mobile-home-he');
+  await p.selectOption('#lang-head', 'uk');
+  await p.getByRole('heading', { name: /уже їде у ваш бік/ }).waitFor();
+  assert.equal(await p.evaluate<string>('document.documentElement.dir'), 'ltr');
+  for (const [code, re] of [['fr', /va déjà dans votre direction/], ['de', /ohnehin in Ihre Richtung/], ['it', /va già nella tua direzione/], ['pa', /ਤੁਹਾਡੇ ਪਾਸੇ ਜਾ ਰਿਹਾ ਹੈ/]] as const) {
+    await p.selectOption('#lang-head', code);
+    await p.getByRole('heading', { name: re }).waitFor();
+  }
+  await p.selectOption('#lang-head', 'ru');
   await p.getByRole('heading', { name: /уже едет в ту сторону/ }).waitFor();
   await p.goto(app.url + '/pricing');
   await p.getByRole('heading', { name: 'Цены и комиссии' }).waitFor();
@@ -281,6 +320,58 @@ test('mobile layout, Russian, static pages and 404', async () => {
   assert.match(robots, /Sitemap: http/);
   const sitemap = await (await fetch(app.url + '/sitemap.xml')).text();
   assert.match(sitemap, /<loc>[^<]+\/send<\/loc>/);
+  await ctx.close();
+});
+
+test('forms say what is missing: sign-in and the order form', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await ctx.route(/unpkg\.com|fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => errors.push(String(e)));
+  await p.goto(app.url + '/sign-in');
+  await p.click('button[type=submit]');
+  await p.locator('[data-field=phone].invalid', { hasText: 'Fill this in' }).waitFor();
+  await p.fill('#phone', '780555');
+  await p.click('button[type=submit]');
+  await p.locator('[data-field=phone].invalid', { hasText: 'Enter a 10-digit mobile number' }).waitFor();
+  await p.goto(app.url + '/send/new');
+  await p.fill('#description', '');
+  await p.click('#submit-order');
+  const summary = p.locator('.error-summary');
+  await summary.waitFor();
+  for (const label of ['Pickup', 'Drop-off', 'What are we moving']) assert.match((await summary.textContent())!, new RegExp(label));
+  await p.locator('[data-field=pickup].invalid', { hasText: 'choose a city from the list' }).waitFor();
+  await p.locator('[data-field=description].invalid', { hasText: 'Say what you are sending' }).waitFor();
+  // typing into a field clears its mark
+  await p.fill('#description', 'Box of books');
+  assert.equal(await p.locator('[data-field=description].invalid').count(), 0);
+  await shot(p, 'site-12-order-validation');
+  await ctx.close();
+});
+
+test('declined card: the customer sees why and fixes it on the order page', async () => {
+  const bob = await signIn(app, '7805550444');
+  await bob.api.patch('/v1/me', { name: 'Bob Declined', email: 'bobd@example.com', acceptTerms: true, lang: 'en' });
+  const s = await bob.api.post('/v1/me/card/setup');
+  app.payments.addCard(s.customerId, '9995');
+  await bob.api.post('/v1/me/card/sync');
+  const o = await bob.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(2), windowEnd: hours(4), priceCents: 3000 });
+  const res = await fetch(`${app.url}/v1/driver/orders/${o.id}/take`, { method: 'POST', headers: { Authorization: `Bearer ${mike.token}` } });
+  assert.equal(res.status, 402);
+  const ctx = await browser.newContext({ viewport: { width: 1280, height: 900 } });
+  await ctx.route(/unpkg\.com|fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  await ctx.addInitScript((t: string) => { try { localStorage.setItem('hl.token', t); localStorage.setItem('hl.lang', 'en'); } catch { /* */ } }, bob.token);
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => errors.push(String(e)));
+  await p.goto(`${app.url}/orders/${o.id}`);
+  const box = p.locator('#payment-problem');
+  await box.getByText('Your bank card was declined. Payment for this order did not go through.').waitFor();
+  await box.getByText('There are not enough funds on the card.').waitFor();
+  await shot(p, 'site-13-payment-declined');
+  await p.click('#replace-card');
+  await p.getByRole('button', { name: /save a test card/ }).click();
+  await p.getByText('Card saved. Your orders are open to drivers again.').waitFor();
+  assert.equal((await bob.api.get(`/v1/orders/${o.id}`)).paymentError, null);
   await ctx.close();
 });
 

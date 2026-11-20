@@ -20,8 +20,9 @@ const T: Record<string, Record<Lang, [string, string]>> = {
   offer_declined: { ru: ['Предложение отклонено', 'Заказ #{number}: предложение {price} отклонено'], en: ['Offer declined', 'Order #{number}: the {price} offer was declined'] },
   order_confirmed: { ru: ['Заказ подтверждён', 'Заказ #{number}: водитель {driver}. Списано {price}'], en: ['Order confirmed', 'Order #{number}: driver {driver}. Charged {price}'] },
   job_confirmed: { ru: ['Заказ ваш', 'Заказ #{number}: {route}. Погрузка {window}'], en: ['The job is yours', 'Order #{number}: {route}. Loading {window}'] },
-  payment_failed: { ru: ['Оплата не прошла', 'Заказ #{number}: карта отклонена. Обновите карту в приложении'], en: ['Payment failed', 'Order #{number}: card declined. Update your card in the app'] },
-  payment_failed_driver: { ru: ['Заказ снова открыт', 'Заказ #{number}: оплата клиента не прошла'], en: ['Order reopened', "Order #{number}: the customer's payment failed"] },
+  payment_failed: { ru: ['Оплата заказа #{number} не прошла', 'Банковская карта отклонена, {amount} не списано. {reason} Пока карта не заменена, водители не могут взять заказ. Замените карту на странице заказа'], en: ['Payment for order #{number} failed', 'Your bank card was declined and {amount} was not charged. {reason} Drivers cannot take the order until you replace the card. Replace it on the order page'] },
+  payment_failed_driver: { ru: ['Оплата клиента не прошла', 'Заказ #{number} вернулся в список. Мы сообщили клиенту, взять заказ можно будет после замены карты'], en: ["The customer's payment failed", 'Order #{number} is back in the list. We have told the customer; it can be taken once they replace the card'] },
+  orders_reopened: { ru: ['Карта заменена', 'Заказы снова доступны водителям: {count}'], en: ['Card replaced', 'Your orders are open to drivers again: {count}'] },
   en_route: { ru: ['Водитель едет к вам', 'Заказ #{number}: {driver} выехал на погрузку'], en: ['Driver on the way', 'Order #{number}: {driver} is heading to pick up'] },
   picked_up: { ru: ['Груз забран', 'Заказ #{number}: груз у водителя, фото в приложении'], en: ['Picked up', 'Order #{number}: the driver has the cargo, photos in the app'] },
   in_transit: { ru: ['Груз в пути', 'Заказ #{number} в пути в {city}'], en: ['On the way', 'Order #{number} is on the way to {city}'] },
@@ -54,10 +55,32 @@ const T: Record<string, Record<Lang, [string, string]>> = {
   tax_info_needed: { ru: ['Нужны налоговые данные', 'Чтобы получить выплату, укажите SIN или BN — это требование CRA ко всем платформам'], en: ['Tax details needed', 'To get paid, add your SIN or BN. CRA requires this from every platform'] },
 };
 
+/** Why a card payment failed, in words, for the customer (Stripe decline codes). */
+export function paymentReason(code: string, lang: Lang): string {
+  const R: Record<string, [string, string]> = {
+    insufficient_funds: ['На карте недостаточно средств.', 'There are not enough funds on the card.'],
+    expired_card: ['Срок действия карты истёк.', 'The card has expired.'],
+    incorrect_cvc: ['Неверный CVC-код карты.', 'The card security code (CVC) is incorrect.'],
+    authentication_required: ['Банк требует подтверждения платежа (3-D Secure), а без вас оно невозможно.', 'Your bank requires you to approve the payment (3-D Secure).'],
+    lost_card: ['Карта заблокирована банком как утерянная.', 'The bank has blocked the card as lost.'],
+    stolen_card: ['Карта заблокирована банком как украденная.', 'The bank has blocked the card as stolen.'],
+    pickup_card: ['Банк заблокировал карту.', 'The bank has blocked the card.'],
+    do_not_honor: ['Банк отказал без объяснения причин — позвоните в банк.', 'The bank declined without giving a reason; please call your bank.'],
+    generic_decline: ['Банк отказал без объяснения причин — позвоните в банк.', 'The bank declined without giving a reason; please call your bank.'],
+    card_declined: ['Банк отказал в списании.', 'The bank declined the charge.'],
+    processing_error: ['Временная ошибка банка — попробуйте через несколько минут.', 'A temporary bank error; try again in a few minutes.'],
+    card_velocity_exceeded: ['Превышен лимит операций по карте.', 'The card has exceeded its transaction limit.'],
+    card_missing: ['Сохранённая карта не найдена.', 'The saved card was not found.'],
+  };
+  const r = R[code] ?? ['Банк отклонил платёж.', 'The bank declined the payment.'];
+  return lang === 'ru' ? r[0] : r[1];
+}
+
 /** Types whose push is skipped during a driver's quiet hours (the in-app list still gets them). */
 const QUIET_TYPES = new Set(['new_order', 'new_order_pro', 'new_order_on_trip']);
 /** Types that also go out by email (to a confirmed address). */
 const EMAIL_TYPES = new Set([
+  'orders_reopened',
   'order_created', 'order_confirmed', 'job_confirmed', 'payment_failed', 'delivered', 'payout_sent', 'payout_held', 'cancelled_by_client', 'cancelled_refund',
   'driver_dropped', 'order_expired', 'trip_request', 'offer_from_driver', 'counter_from_client', 'driver_approved', 'driver_rejected', 'doc_rejected',
   'doc_expiring_30', 'doc_expiring_7', 'account_paused', 'insurance_lapsed', 'paused_drops', 'dispute_opened', 'dispute_resolved', 'tax_info_needed', 'tier_changed',
@@ -72,7 +95,7 @@ export function render(type: string, lang: string, vars: Vars, brand = 'Hitchloa
   const entry = T[type];
   const l: Lang = lang === 'ru' ? 'ru' : 'en';
   if (!entry) return { title: type, body: '' };
-  const all: Vars = { brand, ...vars };
+  const all: Vars = { brand, ...vars, ...(vars.reason_code ? { reason: paymentReason(String(vars.reason_code), l) } : {}) };
   const fill = (s: string) => s.replace(/\{(\w+)\}/g, (_, k: string) => String(all[k] ?? ''));
   return { title: fill(entry[l][0]), body: fill(entry[l][1]) };
 }
