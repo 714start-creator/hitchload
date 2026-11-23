@@ -15,6 +15,11 @@ export function windowInZone(start: string | Date, end: string | Date, tz: strin
   const parts = new Intl.DateTimeFormat('en-CA', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz, timeZoneName: 'short' }).formatToParts(new Date(end));
   const hm = `${parts.find((p) => p.type === 'hour')?.value}:${parts.find((p) => p.type === 'minute')?.value}`;
   const zone = parts.find((p) => p.type === 'timeZoneName')?.value ?? '';
+  const dayOf = (d: string | Date) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(d));
+  if (dayOf(start) !== dayOf(end)) {
+    const endDay = new Intl.DateTimeFormat(loc, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: tz }).format(new Date(end));
+    return `${day} – ${endDay} ${zone}`.trim();
+  }
   return `${day}–${hm} ${zone}`.trim();
 }
 

@@ -90,7 +90,7 @@ export const api = {
   deleteAlert: (id: string) => call('DELETE', `/v1/alerts/${id}`),
   upload: (file: Blob, purpose: 'order' | 'pickup' | 'delivery' | 'document') => call<{ key: string; url: string }>('POST', `/v1/uploads?purpose=${purpose}`, undefined, { data: file, type: file.type || 'application/octet-stream' }),
   // customer
-  quote: (p: { pickup: PlaceValue; dropoff: PlaceValue; size: Size; declaredValueCents: number; insured: boolean; windowStart?: string; windowEnd?: string }) => post<Quote>('/v1/quotes', p),
+  quote: (p: { pickup: PlaceValue; dropoff: PlaceValue; size: Size; declaredValueCents: number; insured: boolean; windowStart?: string; windowEnd?: string; deliveryEnd?: string }) => post<Quote>('/v1/quotes', p),
   createOrder: (p: Record<string, unknown>) => post<Order>('/v1/orders', p),
   orders: () => get<Order[]>('/v1/orders'),
   order: (id: string) => get<Order>(`/v1/orders/${id}`),

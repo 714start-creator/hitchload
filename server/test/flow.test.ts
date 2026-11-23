@@ -318,14 +318,15 @@ test('test cards survive a server restart (payment stand-in loses its memory)', 
   assert.equal(taken.status, 'agreed');
 });
 
-test('cargo limits: Basic cannot take a $2,500 fridge unless the customer insures it', async () => {
-  const o = await anna.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'L', declaredValueCents: 250000, insured: false, windowStart: hours(2), windowEnd: hours(5) });
+test('cargo limits: Basic with a delivery endorsement ($4,000) cannot take a $4,500 fridge unless the customer insures it', async () => {
+  assert.equal((await basic.api.get('/v1/driver')).driver.cargoLimitCents, 400000);
+  const o = await anna.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'L', declaredValueCents: 450000, insured: false, windowStart: hours(2), windowEnd: hours(5) });
   app.advance(3 * 60_000);
   const item = (await basic.api.get('/v1/driver/feed')).items.find((i: { id: string }) => i.id === o.id);
   assert.equal(item.eligibility.lockReason, 'cargo_limit');
   await expectError(basic.api.post(`/v1/driver/orders/${o.id}/take`), 409, 'cargo_limit');
-  const o2 = await anna.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'L', declaredValueCents: 250000, insured: true, windowStart: hours(2), windowEnd: hours(5) });
-  assert.equal(o2.insuranceCents, 3750);
+  const o2 = await anna.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'L', declaredValueCents: 450000, insured: true, windowStart: hours(2), windowEnd: hours(5) });
+  assert.equal(o2.insuranceCents, 6750);
   app.advance(3 * 60_000);
   const item2 = (await basic.api.get('/v1/driver/feed')).items.find((i: { id: string }) => i.id === o2.id);
   assert.equal(item2.eligibility.canTake, true);
@@ -423,4 +424,29 @@ test('webhooks are idempotent and signatures are required in Stripe mode', async
   assert.equal((await client(app.url).post('/webhooks/stripe', ev)).result, 'duplicate');
   const health = await client(app.url).get('/health');
   assert.equal(health.payments, 'fake');
+});
+
+test('loading window over several days; optional delivery deadline is checked and respected by trips', async () => {
+  // a 10-day loading window is accepted (used to be limited to 3 days)
+  const long = await anna.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(2), windowEnd: hours(2 + 240), priceCents: 3000 });
+  assert.equal(long.deliveryEnd, null);
+  await anna.api.post(`/v1/orders/${long.id}/cancel`);
+  await expectError(anna.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(2), windowEnd: hours(24 * 40), priceCents: 3000 }), 400, 'bad_window');
+  // deadline before loading starts / "from" after the deadline → refused
+  await expectError(anna.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(5), windowEnd: hours(8), deliveryEnd: hours(4), priceCents: 3000 }), 400, 'bad_delivery');
+  await expectError(anna.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(2), windowEnd: hours(8), deliveryStart: hours(30), deliveryEnd: hours(20), priceCents: 3000 }), 400, 'bad_delivery');
+  // Edmonton → Calgary, deliver within 2 hours of the trip leaving: a trip that gets to Calgary later is not "on the way"
+  const trip = await pro.api.post('/v1/driver/trips', { stops: [{ city: 'Edmonton', province: 'AB' }, { city: 'Calgary', province: 'AB' }], departAt: hours(3), space: 'half' });
+  const tight = await anna.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.kensington, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(2), windowEnd: hours(6), deliveryEnd: hours(4), priceCents: 9000 });
+  const loose = await anna.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.kensington, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(2), windowEnd: hours(6), deliveryStart: hours(5), deliveryEnd: hours(30), priceCents: 9000 });
+  assert.ok(tight.deliveryEnd && loose.deliveryStart);
+  const loads = (await pro.api.get(`/v1/driver/trips/${trip.id}/loads`)).items.map((i: { id: string }) => i.id);
+  assert.ok(!loads.includes(tight.id), 'arrives too late for the deadline');
+  assert.ok(loads.includes(loose.id));
+  const feed = (await pro.api.get('/v1/driver/feed')).items as { id: string; eligibility: { onMyTrip: boolean } }[];
+  assert.equal(feed.find((i) => i.id === tight.id)!.eligibility.onMyTrip, false);
+  assert.equal(feed.find((i) => i.id === loose.id)!.eligibility.onMyTrip, true);
+  await anna.api.post(`/v1/orders/${tight.id}/cancel`);
+  await anna.api.post(`/v1/orders/${loose.id}/cancel`);
+  await pro.api.del(`/v1/driver/trips/${trip.id}`);
 });

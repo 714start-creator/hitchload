@@ -22,7 +22,16 @@ export function dayTime(iso: string, lang: Lang): string {
 }
 
 export function windowText(start: string, end: string, lang: Lang): string {
-  return `${dayTime(start, lang)}–${time(end, lang)}`;
+  const a = new Date(start);
+  const b = new Date(end);
+  const sameDay = a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+  return sameDay ? `${dayTime(start, lang)}–${time(end, lang)}` : `${dayTime(start, lang)} – ${dayTime(end, lang)}`;
+}
+
+/** Delivery window text: "by Fri, 28 Nov, 18:00" or "Thu, 27 Nov, 09:00 – Fri, 28 Nov, 18:00". */
+export function deliveryText(start: string | null | undefined, end: string | null | undefined, lang: Lang, by: (when: string) => string): string | null {
+  if (!end) return null;
+  return start ? windowText(start, end, lang) : by(dayTime(end, lang));
 }
 
 /** mm:ss until `iso`, or null if passed. */

@@ -67,6 +67,8 @@ export interface Order {
   insured: boolean;
   windowStart: string;
   windowEnd: string;
+  deliveryStart?: string | null;
+  deliveryEnd?: string | null;
   priceCents: number;
   agreedCents: number | null;
   tripId: string | null;

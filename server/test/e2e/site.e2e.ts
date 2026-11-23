@@ -102,9 +102,23 @@ test('books the trip: order form, test card, request to the driver', async () =>
   await shipper.locator('.thumb img').waitFor();
   // a wide window so the driver's pass time fits
   const local = new Date(Date.now() + 3600_000);
-  await shipper.fill('#date', `${local.getFullYear()}-${String(local.getMonth() + 1).padStart(2, '0')}-${String(local.getDate()).padStart(2, '0')}`);
-  await shipper.fill('#from', '00:00');
-  await shipper.fill('#to', '23:59');
+  const ymd = (x: Date) => `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`;
+  await shipper.fill('#load-from-date', ymd(local));
+  await shipper.selectOption('#load-from-hour', '00');
+  await shipper.selectOption('#load-from-minute', '00');
+  // the window may span several days
+  await shipper.fill('#load-to-date', ymd(new Date(local.getTime() + 2 * 86_400_000)));
+  await shipper.selectOption('#load-to-hour', '23');
+  await shipper.selectOption('#load-to-minute', '45');
+  // labelled hour / minute pickers instead of the browser pop-up
+  await shipper.locator('fieldset[data-field=loadFrom]', { hasText: 'Hours' }).waitFor();
+  await shipper.locator('fieldset[data-field=loadFrom]', { hasText: 'Minutes' }).waitFor();
+  // insurance note shows the actual amount
+  await shipper.fill('#value', '2000');
+  await shipper.check('#insured');
+  await shipper.getByText('1.5% of the declared value: for $2,000.00 that is $30.00. If it comes to less than $3.00, we charge $3.00.').waitFor();
+  await shipper.uncheck('#insured');
+  await shipper.fill('#value', '200');
   await shipper.getByText(/Booking on Mike/).waitFor();
   await shot(shipper, 'site-3-order-form');
   await shipper.click('#submit-order');
@@ -292,20 +306,23 @@ test('mobile layout, Russian, static pages and 404', async () => {
   const overflow = await p.evaluate<boolean>('document.documentElement.scrollWidth > window.innerWidth + 1');
   assert.equal(overflow, false, 'no horizontal scroll on a phone');
   await shot(p, 'site-10-mobile-home');
-  assert.equal(await p.locator('#lang-head option').count(), 8);
-  await p.selectOption('#lang-head', 'he');
+  // on a phone the language menu lives in the ☰ menu (the header has no room)
+  assert.equal(await p.locator('#lang-head').isVisible(), false);
+  await p.click('button.burger');
+  assert.equal(await p.locator('#lang-menu option').count(), 8);
+  await p.selectOption('#lang-menu', 'he');
   await p.getByRole('heading', { name: /שכבר נוסע לכיוון שלכם/ }).waitFor();
   assert.equal(await p.evaluate<string>('document.documentElement.dir'), 'rtl');
   assert.equal(await p.evaluate<boolean>('document.documentElement.scrollWidth > window.innerWidth + 1'), false, 'no horizontal scroll in RTL');
   await shot(p, 'site-10b-mobile-home-he');
-  await p.selectOption('#lang-head', 'uk');
+  await p.selectOption('#lang-menu', 'uk');
   await p.getByRole('heading', { name: /уже їде у ваш бік/ }).waitFor();
   assert.equal(await p.evaluate<string>('document.documentElement.dir'), 'ltr');
   for (const [code, re] of [['fr', /va déjà dans votre direction/], ['de', /ohnehin in Ihre Richtung/], ['it', /va già nella tua direzione/], ['pa', /ਤੁਹਾਡੇ ਪਾਸੇ ਜਾ ਰਿਹਾ ਹੈ/]] as const) {
-    await p.selectOption('#lang-head', code);
+    await p.selectOption('#lang-menu', code);
     await p.getByRole('heading', { name: re }).waitFor();
   }
-  await p.selectOption('#lang-head', 'ru');
+  await p.selectOption('#lang-menu', 'ru');
   await p.getByRole('heading', { name: /уже едет в ту сторону/ }).waitFor();
   await p.goto(app.url + '/pricing');
   await p.getByRole('heading', { name: 'Цены и комиссии' }).waitFor();
@@ -345,6 +362,13 @@ test('forms say what is missing: sign-in and the order form', async () => {
   // typing into a field clears its mark
   await p.fill('#description', 'Box of books');
   assert.equal(await p.locator('[data-field=description].invalid').count(), 0);
+  // a delivery deadline before loading starts is marked
+  const day = (n: number) => { const x = new Date(Date.now() + n * 86_400_000); return `${x.getFullYear()}-${String(x.getMonth() + 1).padStart(2, '0')}-${String(x.getDate()).padStart(2, '0')}`; };
+  await p.fill('#load-from-date', day(3));
+  await p.fill('#load-to-date', day(4));
+  await p.fill('#deliver-by-date', day(1));
+  await p.click('#submit-order');
+  await p.locator('[data-field=deliverBy].invalid', { hasText: 'The deadline must be after loading starts' }).waitFor();
   await shot(p, 'site-12-order-validation');
   await ctx.close();
 });
@@ -372,6 +396,26 @@ test('declined card: the customer sees why and fixes it on the order page', asyn
   await p.getByRole('button', { name: /save a test card/ }).click();
   await p.getByText('Card saved. Your orders are open to drivers again.').waitFor();
   assert.equal((await bob.api.get(`/v1/orders/${o.id}`)).paymentError, null);
+  await ctx.close();
+});
+
+test('signed-in pages fit a phone screen (no sideways scroll)', async () => {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true });
+  await ctx.route(/unpkg\.com|fonts\.(googleapis|gstatic)\.com/, (r) => r.abort());
+  await ctx.addInitScript((t: string) => { try { localStorage.setItem('hl.token', t); localStorage.setItem('hl.lang', 'ru'); } catch { /* */ } }, mike.token);
+  const p = await ctx.newPage();
+  p.on('pageerror', (e) => errors.push(String(e)));
+  for (const path of ['/', '/send/new', '/driver/trips', '/driver/tax', '/account']) {
+    await p.goto(app.url + path);
+    await p.locator('.site-head').waitFor();
+    await p.waitForTimeout(400);
+    assert.equal(await p.evaluate<boolean>('document.documentElement.scrollWidth > window.innerWidth + 1'), false, `no sideways scroll on ${path}`);
+  }
+  await p.goto(app.url + '/driver/tax');
+  await p.locator('#tax-test-hint', { hasText: '046 454 286' }).waitFor();
+  await p.fill('#tax-number', '976654443');
+  await p.getByRole('button', { name: 'Сохранить' }).click();
+  await p.locator('[data-field=number].invalid', { hasText: 'Такого SIN не существует' }).waitFor();
   await ctx.close();
 });
 

@@ -37,7 +37,7 @@ export function Tax() {
 }
 
 function TaxPage() {
-  const { t, me, refreshMe } = useApp();
+  const { t, me, refreshMe, site } = useApp();
   const [type, setType] = useState<'sin' | 'bn'>('sin');
   const [number, setNumber] = useState('');
   const [gst, setGst] = useState('');
@@ -56,6 +56,7 @@ function TaxPage() {
           <Button small kind={type === 'bn' ? 'primary' : 'secondary'} onClick={() => setType('bn')}>{t('bn')}</Button>
         </div>
         <Field name="number" error={f.errors.number} label={type === 'sin' ? t('sin') : t('bn')}><input id="tax-number" inputMode="numeric" autoComplete="off" value={number} onChange={(e) => { setNumber(e.target.value); f.clear('number'); }} /></Field>
+        {site?.devCodes && type === 'sin' ? <p className="small notice" id="tax-test-hint">{t('taxTestHint')}</p> : null}
         <Field name="gst" error={f.errors.gst} label={t('gst')}><input value={gst} onChange={(e) => { setGst(e.target.value); f.clear('gst'); }} /></Field>
         <ErrorSummary errors={f.errors} labels={{ number: type === 'sin' ? t('sin') : t('bn'), gst: t('gst') }} />
         <Button kind="primary" onClick={async () => {

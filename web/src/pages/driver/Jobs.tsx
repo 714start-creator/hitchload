@@ -4,7 +4,7 @@ import { api, ApiError } from '../../lib/api';
 import { Link, navigate, useApp, useLoad, useNow } from '../../lib/app';
 import { Chat } from '../../lib/chat';
 import { directionsUrl, dollarsToCents, money, windowText } from '../../lib/format';
-import { Button, Card, Countdown, Empty, ErrorBox, Field, Loading, Notice, PageHead, PhotoUpload, RequireAuth, RouteLine, StatusPill, Steps } from '../../lib/ui';
+import { Button, Card, Countdown, Empty, ErrorBox, Field, Loading, Notice, PageHead, PhotoUpload, RequireAuth, RouteLine, StatusPill, Steps, DeliveryLine } from '../../lib/ui';
 import { RateBox, DisputeBox } from '../Orders';
 import { DriverNav } from './Feed';
 
@@ -32,6 +32,7 @@ function JobsList() {
           <Link key={o.id} to={`/driver/jobs/${o.id}`} className="card link-card">
             <div className="row between"><span className="small muted">{t('orderN', { n: o.number })}</span><StatusPill status={o.status} /></div>
             <RouteLine from={o.pickup.city} to={o.dropoff.city} sub={windowText(o.windowStart, o.windowEnd, lang)} />
+            <DeliveryLine o={o} />
             <div className="row between small"><span className="muted">{t('youGet')}</span><b className="money">{money(o.driverNetCents ?? 0)}</b></div>
           </Link>
         ))}
@@ -101,6 +102,7 @@ function JobPage({ id }: { id: string }) {
               <StatusPill status={o.status} />
             </div>
             <RouteLine from={`${o.pickup.address}, ${o.pickup.city}`} to={`${o.dropoff.address}, ${o.dropoff.city}`} sub={`${t('loadingWindow')}: ${windowText(o.windowStart, o.windowEnd, lang)}`} />
+            <DeliveryLine o={o} />
             {mine && o.status !== 'cancelled' ? <Steps status={o.status} /> : null}
             {o.description ? <p>{o.description}</p> : null}
             <p className="small muted">{t('value').replace(/, \$$/, '')}: {money(o.declaredValueCents)}{o.insured ? ` · ${t('insuranceLine')} ✓` : ''}{o.client?.name ? ` · ${o.client.name}${o.client.rating ? ` ★ ${o.client.rating.toFixed(1)}` : ''}` : ''}</p>

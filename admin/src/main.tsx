@@ -270,7 +270,9 @@ function DriverDetail({ id, onChange }: { id: string; onChange: () => void }) {
       // personal auto policy only (no delivery endorsement / commercial policy): $2,500 unless already approved with another limit
       const live = (k: string) => data.documents.some((d: any) => d.kind === k && d.status !== 'rejected');
       const personalOnly = live('insurance_auto') && !live('insurance_endorsement') && !live('insurance_commercial');
-      setCargo(String(personalOnly && data.driver.status !== 'approved' ? 2500 : data.driver.cargoLimitCents / 100));
+      const endorsed = live('insurance_endorsement') || live('insurance_commercial');
+      const fresh = data.driver.status !== 'approved';
+      setCargo(String(fresh && personalOnly ? 2500 : fresh && endorsed ? 4000 : data.driver.cargoLimitCents / 100));
     }
   }, [data]);
   if (error) return <p className="error">{error}</p>;
@@ -381,7 +383,7 @@ function DriverDetail({ id, onChange }: { id: string; onChange: () => void }) {
           }}>Delete user</button>
         </div>
         {afterAcceptAll.length && missing.length ? <p className="small muted">“Accept all” cannot fix: {afterAcceptAll.map((k) => CHECK_LABEL[k] ?? k).join(', ')}. The driver has to complete these.</p> : null}
-        <p className="small muted">Basic: $1,000 cargo limit ($5,000 when the customer buys cargo insurance); a personal auto policy alone: $2,500 (filled in automatically, cannot go higher). Pro: commercial auto + cargo policy, takes any order with no cargo value limit.</p>
+        <p className="small muted">Basic with a delivery endorsement or commercial auto policy: $4,000. Basic with a personal auto policy only: $2,500 (cannot go higher). Otherwise $1,000. When the customer buys cargo insurance, Basic drivers can take items up to at least $5,000. These limits are filled in automatically. Pro: commercial auto + cargo policy, takes any order with no cargo value limit.</p>
         {msg ? <p className={msg.ok ? 'ok' : 'error'} role="status">{msg.text}</p> : null}
       </div>
       {msg ? <div className={`toast-admin ${msg.ok ? 'ok' : 'bad'}`} role="status">{msg.text}</div> : null}

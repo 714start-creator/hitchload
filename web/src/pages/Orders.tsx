@@ -7,7 +7,7 @@ import { Chat } from '../lib/chat';
 import { dayTime, dollarsToCents, money, windowText } from '../lib/format';
 import { RouteMap } from '../lib/map';
 import type { CancelPreview, Order, TripOption } from '../lib/types';
-import { Button, Card, Countdown, Empty, ErrorBox, FeeBox, Field, Loading, Notice, PageHead, RequireAuth, RouteLine, Stars, StatusPill, Steps, TripCard } from '../lib/ui';
+import { Button, Card, Countdown, Empty, ErrorBox, FeeBox, Field, Loading, Notice, PageHead, RequireAuth, RouteLine, Stars, StatusPill, Steps, TripCard, DeliveryLine } from '../lib/ui';
 
 export function Orders() {
   return <RequireAuth><OrdersList /></RequireAuth>;
@@ -88,6 +88,7 @@ function OrderDetail({ id }: { id: string }) {
               <StatusPill status={o.status} />
             </div>
             <RouteLine from={`${o.pickup.address}, ${o.pickup.city}`} to={`${o.dropoff.address}, ${o.dropoff.city}`} sub={`${t('loadingWindow')}: ${windowText(o.windowStart, o.windowEnd, lang)}`} />
+            <DeliveryLine o={o} />
             {o.status !== 'cancelled' ? <Steps status={o.status} /> : null}
             {o.description ? <p>{o.description}</p> : null}
             {o.photos.length ? <div className="thumbs">{o.photos.map((u) => <a key={u} href={u} target="_blank" rel="noreferrer" className="thumb"><img src={u} alt="" /></a>)}</div> : null}

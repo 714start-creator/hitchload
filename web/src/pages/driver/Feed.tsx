@@ -4,7 +4,7 @@ import { api } from '../../lib/api';
 import { Link, useApp, useLoad, useNow } from '../../lib/app';
 import { money, windowText } from '../../lib/format';
 import type { Order } from '../../lib/types';
-import { Countdown, Empty, ErrorBox, Loading, Notice, PageHead, Pill, RequireAuth, RouteLine, StatusPill } from '../../lib/ui';
+import { Countdown, Empty, ErrorBox, Loading, Notice, PageHead, Pill, RequireAuth, RouteLine, StatusPill, DeliveryLine } from '../../lib/ui';
 
 export function DriverHome() {
   return <RequireAuth><Home /></RequireAuth>;
@@ -108,6 +108,7 @@ export function LoadCard({ o, eta, fitsWindow }: { o: Order; eta?: string; fitsW
         {e?.distanceToPickupKm !== null && e?.distanceToPickupKm !== undefined ? <span className="small muted">{t('kmAway', { km: e.distanceToPickupKm })}</span> : null}
       </div>
       <RouteLine from={`${o.pickup.address}, ${o.pickup.city}`} to={`${o.dropoff.address}, ${o.dropoff.city}`} sub={`${t('loadingWindow')}: ${windowText(o.windowStart, o.windowEnd, lang)}`} />
+      <DeliveryLine o={o} />
       {o.description ? <p className="small">{o.description}</p> : null}
       {eta ? <p className="small">{t('eta', { time: windowText(eta, eta, lang).split('–')[0]! })} {fitsWindow === false ? <span className="muted">· {t('outsideWindow')}</span> : null}</p> : null}
       <div className="row between">

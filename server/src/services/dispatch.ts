@@ -52,7 +52,12 @@ export function evaluate(ctx: Ctx, o: OrderRow, dc: DriverContext, now = ctx.now
     ? { lat: d.last_lat, lng: d.last_lng }
     : d.home_lat !== null && d.home_lng !== null ? { lat: d.home_lat, lng: d.home_lng } : null;
   const distanceToPickupKm = here ? Math.round(haversineKm(here, o.pickup)) : null;
-  const onMyTrip = dc.trips.some((t) => matchRoute(t.stops, o.pickup, o.dropoff, r.stopMatchKm, r.roadFactor) !== null);
+  const onMyTrip = dc.trips.some((t) => {
+    const m = matchRoute(t.stops, o.pickup, o.dropoff, r.stopMatchKm, r.roadFactor);
+    if (!m) return false;
+    // the trip must reach the drop-off before the customer's "no later than"
+    return !o.delivery_end || new Date(t.depart_at).getTime() + (m.kmToDropoff / r.avgSpeedKmh) * 3_600_000 <= new Date(o.delivery_end).getTime();
+  });
   const near = distanceToPickupKm !== null && distanceToPickupKm <= d.radius_km;
 
   const base = { visible: true, requestedToMe, onMyTrip, near, sizeWarning, distanceToPickupKm };

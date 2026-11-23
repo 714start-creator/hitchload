@@ -1,4 +1,5 @@
 // Background jobs, run in-process on a timer.
+import { ENDORSEMENT_LIMIT_CENTS } from './drivers.js';
 import type { Ctx } from '../ctx.js';
 import { dispatchOrder } from './dispatch.js';
 import type { OrderRow } from './dto.js';
@@ -88,7 +89,7 @@ export async function insuranceCheck(ctx: Ctx): Promise<{ reminded: number; paus
      WHERE tier = 'pro' AND NOT EXISTS (
        SELECT 1 FROM documents x WHERE x.driver_id = drivers.user_id AND x.kind = 'insurance_cargo' AND x.status = 'approved' AND x.expires_on >= $1::date)
      RETURNING user_id`,
-    [today, ctx.cfg.rules.basicCargoLimitCents],
+    [today, ENDORSEMENT_LIMIT_CENTS], // they keep a commercial auto policy
   );
   for (const d of down) {
     await notify(ctx, d.user_id, 'tier_changed', { tier: 'Basic' });

@@ -80,6 +80,8 @@ export interface OrderRow {
   insurance_cents: number;
   window_start: string;
   window_end: string;
+  delivery_start: string | null;
+  delivery_end: string | null;
   recipient_name: string | null;
   recipient_phone: string | null;
   price_cents: number;
@@ -201,6 +203,8 @@ export function orderDto(o: OrderRow, viewer: Viewer, x: OrderExtras = {}) {
     insured: o.insured,
     windowStart: o.window_start,
     windowEnd: o.window_end,
+    deliveryStart: o.delivery_start ?? null,
+    deliveryEnd: o.delivery_end ?? null,
     priceCents: o.price_cents,
     agreedCents: o.agreed_cents,
     tripId: o.trip_id,

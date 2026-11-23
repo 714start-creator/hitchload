@@ -6,7 +6,7 @@ import { dayTime } from '../../lib/format';
 import { ErrorSummary, useFormErrors, type Errors } from '../../lib/form';
 import { RouteMap } from '../../lib/map';
 import type { Trip } from '../../lib/types';
-import { Button, Card, CityInput, Empty, ErrorBox, Field, Loading, Notice, PageHead, RequireAuth, RouteLine } from '../../lib/ui';
+import { Button, Card, CityInput, DateTimeInput, Empty, ErrorBox, Field, isoDay, Loading, Notice, PageHead, RequireAuth, RouteLine } from '../../lib/ui';
 import { DriverNav, LoadCard } from './Feed';
 
 export function Trips() {
@@ -75,7 +75,7 @@ function NewTrip({ onPosted }: { onPosted: (t: Trip) => void }) {
       ))}
       {stops.length < 8 ? <button type="button" className="btn ghost small" id="add-stop" onClick={() => setStops([...stops.slice(0, -1), '', stops[stops.length - 1]!])}>{t('addStop')}</button> : null}
       <div className="grid2">
-        <Field name="depart" error={f.errors.depart} label={t('departure')}><input id="depart" type="datetime-local" value={depart} onChange={(e) => { setDepart(e.target.value); f.clear('depart'); }} /></Field>
+        <DateTimeInput idPrefix="depart" name="depart" error={f.errors.depart} label={t('departure')} value={depart} min={isoDay(0)} onChange={(v) => { setDepart(v); f.clear('depart'); }} />
         <Field label={t('space')}>
           <select id="space" value={space} onChange={(e) => setSpace(e.target.value)}>
             <option value="quarter">{t('space_quarter')}</option>

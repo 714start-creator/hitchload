@@ -99,7 +99,7 @@ export interface TripOption {
 /** Published trips that pass the pickup and then the dropoff, soonest first. */
 export async function matchTrips(
   ctx: Ctx,
-  q: { pickup: Point; dropoff: Point; size: Size; km: number; declaredValueCents: number; insured: boolean; windowStart?: Date; windowEnd?: Date; excludeDriver?: string },
+  q: { pickup: Point; dropoff: Point; size: Size; km: number; declaredValueCents: number; insured: boolean; windowStart?: Date; windowEnd?: Date; excludeDriver?: string; deliveryEnd?: Date },
 ): Promise<TripOption[]> {
   const rows = await ctx.db.query<
     TripRow & { name: string | null; rating_sum: number; rating_count: number; tier: 'basic' | 'pro'; cargo_limit_cents: number; completed_jobs: number; make: string; model: string }
@@ -123,6 +123,7 @@ export async function matchTrips(
     const pickupEta = new Date(dep + (m.kmToPickup / r.avgSpeedKmh) * 3_600_000);
     if (pickupEta.getTime() < ctx.now().getTime()) continue; // already passed the pickup
     const dropoffEta = new Date(dep + (m.kmToDropoff / r.avgSpeedKmh) * 3_600_000);
+    if (q.deliveryEnd && dropoffEta > q.deliveryEnd) continue; // would arrive after the customer's deadline
     out.push({
       tripId: t.id,
       driver: { name: firstName(t.name), rating: rating(t.rating_sum, t.rating_count), tier: t.tier, vehicle: [t.make, t.model].filter(Boolean).join(' '), completedJobs: t.completed_jobs },

@@ -6,7 +6,7 @@ import { CardForm } from '../lib/card';
 import { ErrorSummary, isPhone, useFormErrors, type Errors } from '../lib/form';
 import { dollarsToCents, locale, maskPhone, money, type PlaceValue } from '../lib/format';
 import type { Quote, Size } from '../lib/types';
-import { Button, Card, ErrorBox, FeeBox, Field, Notice, PageHead, PhotoUpload, PlaceInput, SizePicker, TripCard, isoDay } from '../lib/ui';
+import { Button, Card, DateTimeInput, ErrorBox, FeeBox, Field, Notice, PageHead, PhotoUpload, PlaceInput, SizePicker, TripCard, isoDay, localToIso } from '../lib/ui';
 
 interface Draft {
   pickup: PlaceValue | null;
@@ -16,9 +16,12 @@ interface Draft {
   photos: { key: string; url: string }[];
   value: string;
   insured: boolean;
-  date: string;
-  from: string;
-  to: string;
+  /** loading window, "YYYY-MM-DDTHH:MM" local */
+  loadFrom: string;
+  loadTo: string;
+  /** optional delivery window */
+  deliverFrom: string;
+  deliverBy: string;
   recipientName: string;
   recipientPhone: string;
   price: string;
@@ -40,18 +43,15 @@ const saveDraft = (d: Draft) => {
   }
 };
 
-function localIso(date: string, hm: string): string | null {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
-  const h = /^(\d{1,2}):(\d{2})$/.exec(hm);
-  if (!m || !h) return null;
-  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(h[1]), Number(h[2])).toISOString();
-}
+/** Old drafts kept date + from + to. */
+type OldDraft = Partial<Draft> & { date?: string; from?: string; to?: string };
 
 export function NewOrder() {
   const { t, me, refreshMe } = useApp();
   const { query } = useLocation();
   const tripId = query.get('trip');
-  const saved = useMemo(loadDraft, []);
+  const saved = useMemo(loadDraft, []) as OldDraft | null;
+  const day = query.get('date') || saved?.date || isoDay(0);
   const [d, setD] = useState<Draft>(() => ({
     pickup: saved?.pickup ?? null,
     dropoff: saved?.dropoff ?? null,
@@ -60,22 +60,29 @@ export function NewOrder() {
     photos: saved?.photos ?? [],
     value: saved?.value ?? '200',
     insured: saved?.insured ?? false,
-    date: query.get('date') || saved?.date || isoDay(0),
-    from: saved?.from ?? '10:00',
-    to: saved?.to ?? '18:00',
+    loadFrom: (!query.get('date') && saved?.loadFrom) || `${day}T${saved?.from ?? '10:00'}`,
+    loadTo: (!query.get('date') && saved?.loadTo) || `${day}T${saved?.to ?? '18:00'}`,
+    deliverFrom: saved?.deliverFrom ?? '',
+    deliverBy: saved?.deliverBy ?? '',
     recipientName: saved?.recipientName ?? '',
     recipientPhone: saved?.recipientPhone ?? '',
     price: saved?.price ?? '',
   }));
   const f = useFormErrors();
-  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => { setD((x) => ({ ...x, [k]: v })); f.clear(k); if (k === 'date' || k === 'from' || k === 'to') { f.clear('date'); f.clear('from'); f.clear('to'); } };
+  const set = <K extends keyof Draft>(k: K, v: Draft[K]) => {
+    setD((x) => ({ ...x, [k]: v }));
+    f.clear(k);
+    if (k === 'loadFrom' || k === 'loadTo' || k === 'deliverFrom' || k === 'deliverBy') for (const x of ['loadFrom', 'loadTo', 'deliverFrom', 'deliverBy']) f.clear(x);
+  };
   useEffect(() => saveDraft(d), [d]);
 
   const [rules, setRules] = useState<{ cancelLateHours: number; insuranceRate: number; insuranceMinCents: number; clientFeeRate: number } | null>(null);
   useEffect(() => void api.config().then((c) => setRules(c.rules)).catch(() => undefined), []);
 
-  const windowStart = localIso(d.date, d.from);
-  const windowEnd = localIso(d.date, d.to);
+  const windowStart = localToIso(d.loadFrom);
+  const windowEnd = localToIso(d.loadTo);
+  const deliveryStart = localToIso(d.deliverFrom);
+  const deliveryEnd = localToIso(d.deliverBy);
   const valueCents = dollarsToCents(d.value) ?? 0;
 
   // quote whenever the route, size, value or window changes
@@ -88,10 +95,10 @@ export function NewOrder() {
     }
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
-      api.quote({ pickup: d.pickup!, dropoff: d.dropoff!, size: d.size, declaredValueCents: valueCents, insured: d.insured, windowStart: windowStart ?? undefined, windowEnd: windowEnd ?? undefined })
+      api.quote({ pickup: d.pickup!, dropoff: d.dropoff!, size: d.size, declaredValueCents: valueCents, insured: d.insured, windowStart: windowStart ?? undefined, windowEnd: windowEnd ?? undefined, deliveryEnd: deliveryEnd ?? undefined })
         .then(setQuote).catch(() => setQuote(null));
     }, 300);
-  }, [d.pickup, d.dropoff, d.size, valueCents, d.insured, windowStart, windowEnd]);
+  }, [d.pickup, d.dropoff, d.size, valueCents, d.insured, windowStart, windowEnd, deliveryEnd]);
 
   const trip = tripId ? quote?.trips.find((x) => x.tripId === tripId) ?? null : null;
   const priceCents = trip ? trip.priceCents : dollarsToCents(d.price) ?? quote?.suggestedPriceCents ?? 0;
@@ -103,7 +110,7 @@ export function NewOrder() {
   const fromCity = query.get('from') ?? '';
   const toCity = query.get('to') ?? '';
   const labels: Record<string, string> = {
-    pickup: t('pickup'), dropoff: t('dropoff'), description: t('what'), value: t('value'), date: t('loadDate'), from: t('loadFrom'), to: t('loadTo'),
+    pickup: t('pickup'), dropoff: t('dropoff'), description: t('what'), value: t('value'), loadFrom: t('loadStart'), loadTo: t('loadEnd'), deliverFrom: t('deliverFrom'), deliverBy: t('deliverBy'),
     recipientPhone: t('recipientPhone'), price: t('yourPrice').replace(/, \$$/, ''),
   };
 
@@ -114,15 +121,22 @@ export function NewOrder() {
       dropoff: !d.dropoff ? t('errPlace') : '',
       description: d.description.trim().length < 3 ? t('errWhat') : '',
       value: v === null || v === undefined || v < 0 ? t('errValue') : '',
-      date: !d.date ? t('errRequired') : '',
-      from: !d.from ? t('errRequired') : '',
-      to: !d.to ? t('errRequired') : '',
+      loadFrom: !windowStart ? t('errRequired') : '',
+      loadTo: !windowEnd ? t('errRequired') : '',
+      deliverFrom: '',
+      deliverBy: d.deliverFrom && !deliveryEnd ? t('errDeliverByNeeded') : '',
       recipientPhone: d.recipientPhone && !isPhone(d.recipientPhone) ? t('errPhone') : '',
       price: !trip && priceCents < 500 ? t('errPrice') : '',
     };
-    if (!e.date && !e.from && !e.to && windowStart && windowEnd) {
-      if (windowEnd <= windowStart) e.to = t('errWindowOrder');
-      else if (new Date(windowEnd).getTime() < Date.now() + 15 * 60_000) e.to = t('errWindowPast');
+    if (windowStart && windowEnd) {
+      const s = new Date(windowStart).getTime();
+      const en = new Date(windowEnd).getTime();
+      if (en <= s) e.loadTo = t('errWindowOrder');
+      else if (en < Date.now() + 15 * 60_000) e.loadTo = t('errWindowPast');
+      else if (s > Date.now() + 30 * 86_400_000 || en > Date.now() + 31 * 86_400_000) e.loadTo = t('errTooFar');
+      if (deliveryEnd && new Date(deliveryEnd).getTime() <= s) e.deliverBy = t('errDeliverByEarly');
+      if (deliveryStart && deliveryEnd && deliveryStart >= deliveryEnd) e.deliverFrom = t('errDeliverOrder');
+      else if (deliveryStart && new Date(deliveryStart).getTime() < s) e.deliverFrom = t('errDeliverBeforeLoad');
     }
     return e;
   }
@@ -142,6 +156,7 @@ export function NewOrder() {
       const o = await api.createOrder({
         pickup: d.pickup, dropoff: d.dropoff, size: d.size, description: d.description, photoKeys: d.photos.map((p) => p.key),
         declaredValueCents: valueCents, insured: d.insured, windowStart, windowEnd,
+        ...(deliveryEnd ? { deliveryEnd, ...(deliveryStart ? { deliveryStart } : {}) } : {}),
         ...(trip ? { tripId: trip.tripId } : { priceCents }),
         ...(d.recipientName ? { recipientName: d.recipientName } : {}),
         ...(d.recipientPhone ? { recipientPhone: d.recipientPhone } : {}),
@@ -154,9 +169,10 @@ export function NewOrder() {
       navigate(`/orders/${o.id}`);
     } catch (e) {
       if ((e as { code?: string }).code === 'card_required') setNeedCard(true);
-      if (f.fromServer(e, { bad_window: 'to', invalid_phone: 'recipientPhone', price_out_of_range: 'price' }, {
-        pickup: 'pickup', dropoff: 'dropoff', description: 'description', declaredValueCents: 'value', windowStart: 'from', windowEnd: 'to', recipientPhone: 'recipientPhone', priceCents: 'price',
-      }, (e as { code?: string }).code === 'bad_window' ? t('errWindowServer') : undefined)) return;
+      const code = (e as { code?: string }).code;
+      if (f.fromServer(e, { bad_window: 'loadTo', bad_delivery: 'deliverBy', invalid_phone: 'recipientPhone', price_out_of_range: 'price' }, {
+        pickup: 'pickup', dropoff: 'dropoff', description: 'description', declaredValueCents: 'value', windowStart: 'loadFrom', windowEnd: 'loadTo', deliveryStart: 'deliverFrom', deliveryEnd: 'deliverBy', recipientPhone: 'recipientPhone', priceCents: 'price',
+      }, code === 'bad_window' ? t('errWindowServer') : undefined)) return;
       setError(e);
     }
   }
@@ -183,18 +199,31 @@ export function NewOrder() {
               </label>
             </div>
             <p className="small muted">
-              {d.insured && rules ? t('insuranceNote', { rate: (rules.insuranceRate * 100).toFixed(1).replace(/\.0$/, ''), min: money(rules.insuranceMinCents) }) : t('noInsuranceNote')}
+              {d.insured && rules ? t('insuranceNote', {
+                rate: (rules.insuranceRate * 100).toFixed(1).replace(/\.0$/, ''), min: money(rules.insuranceMinCents),
+                value: money(valueCents), amount: money(Math.max(rules.insuranceMinCents, Math.round(valueCents * rules.insuranceRate))),
+              }) : t('noInsuranceNote')}
             </p>
           </Card>
 
           <Card>
             <span className="label">{t('loadingWindow')}</span>
-            <div className="grid3">
-              <Field name="date" error={f.errors.date} label={t('loadDate')}><input id="date" type="date" value={d.date} min={isoDay(0)} onChange={(e) => set('date', e.target.value)} /></Field>
-              <Field name="from" error={f.errors.from} label={t('loadFrom')}><input id="from" type="time" value={d.from} onChange={(e) => set('from', e.target.value)} /></Field>
-              <Field name="to" error={f.errors.to} label={t('loadTo')}><input id="to" type="time" value={d.to} onChange={(e) => set('to', e.target.value)} /></Field>
+            <div className="stack dt-stack">
+              <DateTimeInput idPrefix="load-from" name="loadFrom" error={f.errors.loadFrom} label={t('loadStart')} value={d.loadFrom} min={isoDay(0)}
+                onChange={(v) => { set('loadFrom', v); if (v && localToIso(v)! >= (localToIso(d.loadTo) ?? '')) set('loadTo', `${v.slice(0, 10)}T${String(Math.min(23, Number(v.slice(11, 13)) + 8)).padStart(2, '0')}:${v.slice(14)}`); }} />
+              <DateTimeInput idPrefix="load-to" name="loadTo" error={f.errors.loadTo} label={t('loadEnd')} value={d.loadTo} min={d.loadFrom.slice(0, 10) || isoDay(0)} onChange={(v) => set('loadTo', v)} />
             </div>
+            <p className="small muted">{t('loadWindowHint')}</p>
             <TzNote pickup={d.pickup} start={windowStart} end={windowEnd} />
+          </Card>
+
+          <Card>
+            <span className="label">{t('deliveryWindow')}</span>
+            <div className="stack dt-stack">
+              <DateTimeInput idPrefix="deliver-from" name="deliverFrom" error={f.errors.deliverFrom} label={t('deliverFrom')} value={d.deliverFrom} min={d.loadFrom.slice(0, 10) || isoDay(0)} optional onChange={(v) => set('deliverFrom', v)} />
+              <DateTimeInput idPrefix="deliver-by" name="deliverBy" error={f.errors.deliverBy} label={t('deliverBy')} value={d.deliverBy} min={d.loadFrom.slice(0, 10) || isoDay(0)} optional onChange={(v) => set('deliverBy', v)} />
+            </div>
+            <p className="small muted">{t('deliveryHint')}</p>
           </Card>
 
           <Card>

@@ -34,6 +34,8 @@ export const quoteSchema = z.object({
   insured: z.boolean(),
   windowStart: z.string().datetime({ offset: true }).optional(),
   windowEnd: z.string().datetime({ offset: true }).optional(),
+  deliveryStart: z.string().datetime({ offset: true }).nullish(),
+  deliveryEnd: z.string().datetime({ offset: true }).nullish(),
 });
 
 export const createOrderSchema = quoteSchema.extend({
@@ -62,6 +64,7 @@ export async function quote(ctx: Ctx, p: z.infer<typeof quoteSchema>, userId?: s
     ? await matchTrips(ctx, {
         pickup: p.pickup, dropoff: p.dropoff, size: p.size, km, declaredValueCents: p.declaredValueCents, insured: p.insured,
         windowStart: p.windowStart ? new Date(p.windowStart) : undefined, windowEnd: p.windowEnd ? new Date(p.windowEnd) : undefined, excludeDriver: userId,
+        deliveryEnd: p.deliveryEnd ? new Date(p.deliveryEnd) : undefined,
       })
     : [];
   return {
@@ -114,7 +117,14 @@ export async function createOrder(ctx: Ctx, clientId: string, p: z.infer<typeof 
   if (we <= ws) throw bad('bad_window', 'The loading window must end after it starts');
   if (we.getTime() < now.getTime() + 15 * 60_000) throw bad('bad_window', 'The loading window has already passed');
   if (ws.getTime() > now.getTime() + 30 * 86_400_000) throw bad('bad_window', 'Orders can be placed up to 30 days ahead');
-  if (we.getTime() - ws.getTime() > 3 * 86_400_000) throw bad('bad_window', 'The loading window can be at most 3 days long');
+  if (we.getTime() > now.getTime() + 31 * 86_400_000) throw bad('bad_window', 'The loading window must end within 30 days');
+  const ds = p.deliveryStart ? new Date(p.deliveryStart) : null;
+  const de = p.deliveryEnd ? new Date(p.deliveryEnd) : null;
+  if (ds && !de) throw bad('bad_delivery', 'Add the "deliver no later than" date');
+  if (de && de <= ws) throw bad('bad_delivery', 'The delivery deadline must be after loading starts');
+  if (de && ds && ds >= de) throw bad('bad_delivery', 'Delivery must start before the deadline');
+  if (ds && ds < ws) throw bad('bad_delivery', 'Delivery cannot start before loading');
+  if (de && de.getTime() > now.getTime() + 61 * 86_400_000) throw bad('bad_delivery', 'The delivery deadline must be within 60 days');
   for (const k of p.photoKeys) if (!k.startsWith(`u/${clientId}/`)) throw forbidden('A photo does not belong to you');
   let recipientPhone: string | null = null;
   if (p.recipientPhone) {
@@ -127,7 +137,7 @@ export async function createOrder(ctx: Ctx, clientId: string, p: z.infer<typeof 
   let requestedDriver: string | null = null;
   let requestExpires: Date | null = null;
   if (p.tripId) {
-    const options = await matchTrips(ctx, { pickup: p.pickup, dropoff: p.dropoff, size: p.size, km, declaredValueCents: p.declaredValueCents, insured: p.insured, excludeDriver: clientId });
+    const options = await matchTrips(ctx, { pickup: p.pickup, dropoff: p.dropoff, size: p.size, km, declaredValueCents: p.declaredValueCents, insured: p.insured, excludeDriver: clientId, deliveryEnd: de ?? undefined });
     const opt = options.find((t) => t.tripId === p.tripId);
     if (!opt) throw bad('trip_unavailable', 'This trip does not fit your order any more');
     const trip = await one<{ driver_id: string }>(ctx.db, 'SELECT driver_id FROM trips WHERE id = $1', [p.tripId]);
@@ -139,11 +149,11 @@ export async function createOrder(ctx: Ctx, clientId: string, p: z.infer<typeof 
   const o = await one<OrderRow>(
     ctx.db,
     `INSERT INTO orders(client_id, trip_id, requested_driver_id, request_expires_at, pickup, dropoff, intercity, distance_km, size, description, photo_keys,
-       declared_value_cents, insured, insurance_cents, window_start, window_end, recipient_name, recipient_phone, price_cents, pro_until, pin)
-     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+       declared_value_cents, insured, insurance_cents, window_start, window_end, recipient_name, recipient_phone, price_cents, pro_until, pin, delivery_start, delivery_end)
+     VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23) RETURNING *`,
     [clientId, p.tripId ?? null, requestedDriver, requestExpires?.toISOString() ?? null, p.pickup, p.dropoff, intercity, km, p.size, p.description, p.photoKeys,
       p.declaredValueCents, p.insured, p.insured ? insuranceCents(p.declaredValueCents, r) : 0, ws.toISOString(), we.toISOString(),
-      p.recipientName ?? null, recipientPhone, price, proUntil.toISOString(), digits(4)],
+      p.recipientName ?? null, recipientPhone, price, proUntil.toISOString(), digits(4), ds?.toISOString() ?? null, de?.toISOString() ?? null],
   );
   await event(ctx.db, o.id, clientId, 'created', { priceCents: price, tripId: p.tripId ?? null });
   await notify(ctx, clientId, 'order_created', { number: o.number, route: `${o.pickup.city} → ${o.dropoff.city}`, window: windowText(o) }, { orderId: o.id });

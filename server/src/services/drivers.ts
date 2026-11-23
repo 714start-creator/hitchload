@@ -18,6 +18,8 @@ const INSURANCE_KINDS: DocKind[] = ['insurance_auto', 'insurance_endorsement', '
 const DELIVERY_COVER: DocKind[] = ['insurance_endorsement', 'insurance_commercial'];
 /** Basic drivers whose only cover is a personal auto policy take items worth up to this much. */
 export const PERSONAL_POLICY_LIMIT_CENTS = 250_000;
+/** Basic drivers with a delivery endorsement or a commercial auto policy. */
+export const ENDORSEMENT_LIMIT_CENTS = 400_000;
 
 export interface DocRow {
   id: string;
@@ -199,7 +201,7 @@ export const taxSchema = z.object({
 export async function saveTaxInfo(ctx: Ctx, userId: string, p: z.infer<typeof taxSchema>) {
   await getDriver(ctx.db, userId);
   const digits = p.number.replace(/\D/g, '');
-  if (p.type === 'sin' && !validSin(digits)) throw bad('invalid_sin', 'This SIN is not valid');
+  if (p.type === 'sin' && !validSin(digits)) throw bad('invalid_sin', 'This SIN does not exist: check the digits, the last (check) digit does not match');
   if (p.type === 'bn' && digits.length !== 9 && digits.length !== 13) throw bad('invalid_bn', 'A business number has 9 digits');
   await ctx.db.query(
     `UPDATE drivers SET tax_id_type = $2, tax_id_enc = $3, tax_id_last3 = $4, gst_number = $5 WHERE user_id = $1`,
@@ -381,6 +383,7 @@ export async function decideDriver(ctx: Ctx, adminId: string, userId: string, p:
   // a personal auto policy alone: items up to $2,500 (the default for such drivers), never more
   const today = ctx.now().toISOString().slice(0, 10);
   const deliveryCover = o.documents.some((d) => DELIVERY_COVER.includes(d.kind as DocKind) && d.status !== 'rejected' && (!d.expiresOn || d.expiresOn >= today));
+  if (deliveryCover && tier === 'basic' && p.cargoLimitCents === undefined) cargoLimit = ENDORSEMENT_LIMIT_CENTS;
   if (!deliveryCover && o.documents.some((d) => d.kind === 'insurance_auto' && d.status !== 'rejected')) {
     cargoLimit = tier === 'basic' && p.cargoLimitCents === undefined ? PERSONAL_POLICY_LIMIT_CENTS : Math.min(cargoLimit, PERSONAL_POLICY_LIMIT_CENTS);
   }

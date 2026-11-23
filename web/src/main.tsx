@@ -68,6 +68,7 @@ function Header() {
           {nav.map(([to, label]) => (
             <Link key={to} to={to} className={path === to || (to !== '/' && path.startsWith(to + '/')) ? 'on' : ''} onClick={() => setOpen(false)} aria-current={path === to ? 'page' : undefined}>{label}</Link>
           ))}
+          <div className="nav-lang"><LangSelect id="lang-menu" /></div>
         </nav>
         <div className="head-tools">
           <LangSelect id="lang-head" compact />

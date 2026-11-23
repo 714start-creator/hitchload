@@ -175,6 +175,7 @@ export async function onTripCreated(ctx: Ctx, trip: TripRow): Promise<{ shippers
     if (!m) continue;
     const eta = dep + (m.kmToPickup / r.avgSpeedKmh) * 3_600_000;
     if (eta > new Date(o.window_end).getTime() || eta < new Date(o.window_start).getTime() - ETA_SLACK_MS) continue;
+    if (o.delivery_end && dep + (m.kmToDropoff / r.avgSpeedKmh) * 3_600_000 > new Date(o.delivery_end).getTime()) continue;
     const ins = await ctx.db.query(`INSERT INTO trip_matches(trip_id, kind, target_id) VALUES ($1, 'order', $2) ON CONFLICT DO NOTHING RETURNING trip_id`, [trip.id, o.id]);
     if (!ins.length) continue;
     told.add(o.client_id);
@@ -219,6 +220,7 @@ export async function tripLoads(ctx: Ctx, driverId: string, tripId: string) {
     const e = evaluate(ctx, o, dc);
     if (!e.visible) continue;
     const pickupEta = new Date(dep + (m.kmToPickup / r.avgSpeedKmh) * 3_600_000);
+    if (o.delivery_end && dep + (m.kmToDropoff / r.avgSpeedKmh) * 3_600_000 > new Date(o.delivery_end).getTime()) continue; // too late for the deadline
     const fitsWindow = pickupEta >= new Date(o.window_start) && pickupEta <= new Date(o.window_end);
     items.push({ ...orderDto(o, 'prospect', { urls: (k) => ctx.storage.url(k) }), eligibility: e, pickupEta: pickupEta.toISOString(), fitsWindow });
   }

@@ -2,7 +2,7 @@
 import { useEffect, useId, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api } from './api';
 import { Link, navigate, useApp } from './app';
-import { dayTime, money, placeFromGoogle, type PlaceValue } from './format';
+import { dayTime, deliveryText, money, placeFromGoogle, type PlaceValue } from './format';
 import { LANGS, type Lang } from './i18n';
 import type { City, OrderStatus, Size, TripOption } from './types';
 
@@ -417,4 +417,61 @@ export function LangSelect({ id, compact }: { id?: string; compact?: boolean }) 
       {LANGS.map((l) => <option key={l.code} value={l.code} lang={l.code} dir={l.dir}>{compact ? `${l.code.toUpperCase()} · ${l.name}` : l.name}</option>)}
     </select>
   );
+}
+
+const HOURS = Array.from({ length: 24 }, (_, i) => String(i).padStart(2, '0'));
+const MINUTES = ['00', '15', '30', '45'];
+
+/**
+ * Date + hour + minute with labels, instead of the browser's own date-time pop-up (unlabelled, hard to scroll).
+ * `value` is "YYYY-MM-DDTHH:MM" in local time, or "" when empty (only with `optional`).
+ */
+export function DateTimeInput({ idPrefix, label, value, onChange, error, name, min, optional }: {
+  idPrefix: string; label: ReactNode; value: string; onChange: (v: string) => void; error?: string | null; name?: string; min?: string; optional?: boolean;
+}) {
+  const { t } = useApp();
+  const [date, hm = ''] = value ? value.split('T') : ['', ''];
+  const [h = '', m = ''] = hm.split(':');
+  const minute = MINUTES.includes(m) ? m : m ? m : '00';
+  const emit = (d: string, hh: string, mm: string) => onChange(d ? `${d}T${hh || '09'}:${mm || '00'}` : '');
+  return (
+    <fieldset className={`field datetime ${error ? 'invalid' : ''}`} data-field={name}>
+      <legend className="label">{label}</legend>
+      <div className="dt-row">
+        <label className="dt-part dt-date">
+          <span className="small muted">{t('dtDate')}</span>
+          <input id={`${idPrefix}-date`} type="date" value={date ?? ''} min={min} onChange={(e) => emit(e.target.value, h, minute)} />
+        </label>
+        <label className="dt-part">
+          <span className="small muted">{t('dtHours')}</span>
+          <select id={`${idPrefix}-hour`} value={h} disabled={optional && !date} onChange={(e) => emit(date || isoDay(0), e.target.value, minute)}>
+            {optional && !date ? <option value="">—</option> : null}
+            {HOURS.map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+        </label>
+        <label className="dt-part">
+          <span className="small muted">{t('dtMinutes')}</span>
+          <select id={`${idPrefix}-minute`} value={minute} disabled={optional && !date} onChange={(e) => emit(date || isoDay(0), h, e.target.value)}>
+            {(MINUTES.includes(minute) ? MINUTES : [minute, ...MINUTES]).map((x) => <option key={x} value={x}>{x}</option>)}
+          </select>
+        </label>
+        {optional && date ? <button type="button" className="btn ghost small dt-clear" onClick={() => onChange('')} aria-label={t('dtClear')}>{t('dtClear')}</button> : null}
+      </div>
+      {error ? <span className="small err field-error">{error}</span> : null}
+    </fieldset>
+  );
+}
+
+/** "YYYY-MM-DDTHH:MM" (local) → ISO, or null. */
+export function localToIso(v: string): string | null {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{1,2}):(\d{2})$/.exec(v);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]), Number(m[4]), Number(m[5])).toISOString();
+}
+
+/** "Delivery: by Fri 28 Nov, 18:00" under a route, when the customer set a deadline. */
+export function DeliveryLine({ o }: { o: { deliveryStart?: string | null; deliveryEnd?: string | null } }) {
+  const { t, lang } = useApp();
+  const text = deliveryText(o.deliveryStart, o.deliveryEnd, lang, (when) => t('deliverByWhen', { when }));
+  return text ? <p className="small delivery-line"><b>{t('deliveryLabel')}:</b> {text}</p> : null;
 }
