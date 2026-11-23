@@ -419,7 +419,7 @@ export const de: Partial<Dict> = {
   errAge: "Fahrer müssen mindestens 18 Jahre alt sein",
   errAddress: "Straße und Hausnummer eingeben",
   errCity: "Stadt aus der Liste wählen",
-  errRadius: "Zahl von 5 bis 300 eingeben",
+  errRadius: "Zahl von 1 bis 7000 eingeben",
   errYear: "Jahr von 1990 bis {max} eingeben",
   errPlate: "Kennzeichen eingeben",
   errGvw: "Zulässiges Gesamtgewicht in kg eingeben (500 bis 40.000)",

@@ -69,7 +69,7 @@ export const driverProfileSchema = z.object({
   dateOfBirth: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   homeCity: z.string().trim().min(2).max(80).optional(),
   home: z.object({ lat: z.number().min(41).max(84), lng: z.number().min(-142).max(-52) }).optional(),
-  radiusKm: z.number().int().min(5).max(300).optional(),
+  radiusKm: z.number().int().min(1).max(7000).optional(),
   quietFrom: z.string().regex(/^\d\d:\d\d$/).nullable().optional(),
   quietTo: z.string().regex(/^\d\d:\d\d$/).nullable().optional(),
 });

@@ -180,7 +180,7 @@ function ProfileForm({ data, editable, act }: { data: DriverOverview; editable: 
         dob: editable && !dob ? t('errRequired') : editable && ageOn(dob) < 18 ? t('errAge') : '',
         address: address.trim().length < 5 ? t('errAddress') : '',
         city: !c ? t('errCity') : '',
-        radius: !Number.isFinite(r) || r < 5 || r > 300 ? t('errRadius') : '',
+        radius: !Number.isFinite(r) || r < 1 || r > 7000 ? t('errRadius') : '',
       };
       if (!f.check(errs)) return;
       void act(() => api.updateDriver({
@@ -198,7 +198,7 @@ function ProfileForm({ data, editable, act }: { data: DriverOverview; editable: 
       <Field name="address" error={f.errors.address} label={t('homeAddress')}><input id="home-address" value={address} autoComplete="street-address" onChange={(e) => { setAddress(e.target.value); f.clear('address'); }} /></Field>
       <div className="grid2">
         <Field name="city" error={f.errors.city} label={t('homeCity')}><CityInput id="home-city" value={city} onChange={(v) => { setCity(v); f.clear('city'); }} /></Field>
-        <Field name="radius" error={f.errors.radius} label={t('radius')}><input id="radius" type="number" min={5} max={300} value={radius} onChange={(e) => { setRadius(e.target.value); f.clear('radius'); }} /></Field>
+        <Field name="radius" error={f.errors.radius} label={t('radius')}><input id="radius" type="number" min={1} max={7000} value={radius} onChange={(e) => { setRadius(e.target.value); f.clear('radius'); }} /></Field>
       </div>
       <Field label={t('quietHours')}>
         <div className="row"><input type="time" value={quietFrom} onChange={(e) => setQuietFrom(e.target.value)} aria-label="from" /> – <input type="time" value={quietTo} onChange={(e) => setQuietTo(e.target.value)} aria-label="to" /></div>

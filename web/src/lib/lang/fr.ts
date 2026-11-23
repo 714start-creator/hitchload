@@ -419,7 +419,7 @@ export const fr: Partial<Dict> = {
   errAge: "Les chauffeurs doivent avoir au moins 18 ans",
   errAddress: "Entrez votre adresse",
   errCity: "Choisissez une ville dans la liste",
-  errRadius: "Entrez un nombre de 5 à 300",
+  errRadius: "Entrez un nombre de 1 à 7000",
   errYear: "Entrez une année de 1990 à {max}",
   errPlate: "Entrez la plaque d’immatriculation",
   errGvw: "Entrez le poids immatriculé en kg (de 500 à 40 000)",

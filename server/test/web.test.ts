@@ -272,3 +272,13 @@ test('database file storage (test servers without S3): put, signed read, bad sig
   assert.equal(await st.readLocal!('u/x/document/a.jpg', u.searchParams.get('exp')!, 'forged'), null);
   assert.equal(await st.readLocal!('u/x/document/missing.jpg', u.searchParams.get('exp')!, u.searchParams.get('sig')!), null);
 });
+
+test('driver radius accepts 1 to 7000 km', async () => {
+  const s = await signIn(app, '7805550971');
+  await s.api.patch('/v1/me', { name: 'Radius Test', email: 'radius@example.com', acceptTerms: true });
+  await s.api.post('/v1/driver');
+  assert.equal((await s.api.patch('/v1/driver', { radiusKm: 7000 })).driver.radiusKm, 7000);
+  assert.equal((await s.api.patch('/v1/driver', { radiusKm: 1 })).driver.radiusKm, 1);
+  await expectError(s.api.patch('/v1/driver', { radiusKm: 7001 }), 400, 'validation_failed');
+  await expectError(s.api.patch('/v1/driver', { radiusKm: 0 }), 400, 'validation_failed');
+});
