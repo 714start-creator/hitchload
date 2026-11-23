@@ -39,7 +39,7 @@ const EN: Record<Page, (v: V) => ReactNode> = {
       <h2>Two levels</h2>
       <ul>
         <li><b>Basic</b>: a personal auto policy with a delivery endorsement. Local and intercity loads with declared value up to $1,000 (up to $5,000 when the customer buys cargo insurance).</li>
-        <li><b>Pro</b>: commercial auto and cargo policies. You see new orders first (about 2–3 minutes in town, 30 minutes for intercity) and can take loads up to your cargo policy limit.</li>
+        <li><b>Pro</b>: commercial auto and cargo policies. You see new orders first (about 2–3 minutes in town, 30 minutes for intercity) and can take any load, whatever the item is worth.</li>
       </ul>
       <h2>What you need</h2>
       <ul>
@@ -200,7 +200,7 @@ const RU: Record<Page, (v: V) => ReactNode> = {
       <h2>Два уровня</h2>
       <ul>
         <li><b>Basic</b>: личный полис с дополнением на доставку. Заказы по городу и межгород со стоимостью груза до $1 000 (до $5 000, если клиент купил страховку груза).</li>
-        <li><b>Pro</b>: коммерческий автополис и полис на груз. Вы видите новые заказы первыми (около 2–3 минут по городу, 30 минут по межгороду) и берёте грузы до лимита своего полиса.</li>
+        <li><b>Pro</b>: коммерческий автополис и полис на груз. Вы видите новые заказы первыми (около 2–3 минут по городу, 30 минут по межгороду) и можете брать любые грузы, независимо от их стоимости.</li>
       </ul>
       <h2>Что нужно</h2>
       <ul>

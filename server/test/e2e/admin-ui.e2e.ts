@@ -88,7 +88,8 @@ test('admin reviews documents and approves the driver as Pro', async () => {
   await img.waitFor();
   assert.ok(await img.evaluate((el) => (el as { complete: boolean }).complete));
   await page.selectOption('#tier', 'pro');
-  await page.fill('#cargo', '10000');
+  await page.getByText('Pro: no cargo value limit').waitFor();
+  assert.equal(await page.locator('#cargo').count(), 0);
   await page.click('#approve-all');
   await page.locator('h2 .pill', { hasText: 'approved' }).waitFor();
   await page.getByText('Everything is in place').waitFor();
@@ -155,4 +156,26 @@ test('admin exports the CRA report', async () => {
   assert.match(csv, /Taras Melnyk/);
   assert.match(csv, /,yes\n$/); // no SIN yet
   await shot('5-reports');
+});
+
+test('admin finds a user and deletes them', async () => {
+  const s = await signIn(app, '7805550777');
+  await s.api.patch('/v1/me', { name: 'Zoya Testova', email: 'zoya@example.com', acceptTerms: true });
+  await page.click('header >> text=Users');
+  await page.fill('#user-search', 'Zoya');
+  await page.click('button:has-text("Search")');
+  const row = page.locator('tr[data-user="+17805550777"]');
+  await row.waitFor();
+  await shot('6-users');
+  let asked = '';
+  page.once('dialog', (d) => { asked = d.message(); void d.accept(); });
+  await row.locator('button.delete-user').click();
+  await page.locator('.toast-admin.ok', { hasText: 'deleted completely' }).waitFor();
+  assert.match(asked, /Delete Zoya Testova/);
+  await row.waitFor({ state: 'detached' });
+  // the admin's own row has no Delete button
+  await page.fill('#user-search', '');
+  await page.click('button:has-text("Search")');
+  await page.locator(`tr[data-user="${ADMIN_PHONE}"]`).waitFor();
+  assert.equal(await page.locator(`tr[data-user="${ADMIN_PHONE}"] button.delete-user`).count(), 0);
 });

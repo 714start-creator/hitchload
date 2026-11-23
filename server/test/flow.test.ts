@@ -333,6 +333,17 @@ test('cargo limits: Basic cannot take a $2,500 fridge unless the customer insure
   await anna.api.post(`/v1/orders/${o2.id}/cancel`);
 });
 
+test('a Pro driver takes any order, whatever the item is worth (above his cargo policy)', async () => {
+  // Mike's cargo policy is $25,000; the item is declared at $90,000 and not insured
+  const o = await anna.api.post('/v1/orders', { pickup: places.ikeaEdmonton, dropoff: places.secord, size: 'L', declaredValueCents: 9_000_000, insured: false, windowStart: hours(2), windowEnd: hours(5), priceCents: 40000 });
+  const item = (await pro.api.get('/v1/driver/feed')).items.find((i: { id: string }) => i.id === o.id);
+  assert.equal(item.eligibility.canTake, true);
+  assert.equal(item.eligibility.lockReason, undefined);
+  const taken = await pro.api.post(`/v1/driver/orders/${o.id}/take`);
+  assert.equal(taken.status, 'agreed');
+  await anna.api.post(`/v1/orders/${o.id}/cancel`);
+});
+
 test('far-away orders: any driver may see and take them, but only nearby drivers are notified; strangers cannot read them', async () => {
   app.pushes.length = 0;
   const o = await anna.api.post('/v1/orders', { pickup: places.saskatoon, dropoff: { ...places.saskatoon, address: '100 3rd Ave S', lat: 52.124, lng: -106.664 }, size: 'S', declaredValueCents: 0, insured: false, windowStart: hours(2), windowEnd: hours(4) });

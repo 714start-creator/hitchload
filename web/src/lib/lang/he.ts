@@ -295,6 +295,7 @@ export const he: Partial<Dict> = {
   tier_basic: "Basic",
   tier_pro: "Pro",
   cargoLimit: "תקרת שווי מטען {amount}",
+  cargoNoLimit: "ללא תקרת שווי מטען",
   myTrips: "הנסיעות שלי",
   tripsIntro: "פרסמו נסיעה שאתם עושים. נציג משלוחים בדרך ונעדכן שולחים במסלול.",
   newTrip: "פרסום נסיעה",

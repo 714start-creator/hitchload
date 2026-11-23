@@ -1,7 +1,7 @@
 // Admin views and the yearly CRA platform-operator report.
 import type { Ctx } from '../ctx.js';
-import { maybeOne } from '../db/db.js';
-import { notFound } from '../lib/errors.js';
+import { maybeOne, type Queryable } from '../db/db.js';
+import { bad, conflict, notFound } from '../lib/errors.js';
 import { revealTaxId } from './drivers.js';
 import { orderDto, type DriverRow, type OfferRow, type OrderRow } from './dto.js';
 
@@ -60,6 +60,95 @@ export async function adminDisputes(ctx: Ctx, status: 'open' | 'resolved' = 'ope
 export async function setUserBlocked(ctx: Ctx, adminId: string, userId: string, blocked: boolean) {
   await ctx.db.query('UPDATE users SET blocked = $2 WHERE id = $1', [userId, blocked]);
   await ctx.db.query(`INSERT INTO audit_log(actor_id, action, target, data) VALUES ($1, 'user_blocked', $2, $3)`, [adminId, userId, { blocked }]);
+}
+
+/** Users for the admin list: search by name, phone or email. Deleted users are left out. */
+export async function adminUsers(ctx: Ctx, search?: string) {
+  const q = search?.trim() ? `%${search.trim().toLowerCase()}%` : null;
+  const digits = search?.replace(/\D/g, '') ?? '';
+  return ctx.db.query<{ id: string; phone: string; name: string | null; email: string | null; is_admin: boolean; blocked: boolean; created_at: string; driver_status: string | null; driver_tier: string | null; orders: number; jobs: number }>(
+    `SELECT u.id, u.phone, u.name, u.email, u.is_admin, u.blocked, u.created_at, d.status::text AS driver_status, d.tier::text AS driver_tier,
+            (SELECT count(*)::int FROM orders o WHERE o.client_id = u.id) AS orders,
+            (SELECT count(*)::int FROM orders o WHERE o.driver_id = u.id) AS jobs
+       FROM users u LEFT JOIN drivers d ON d.user_id = u.id
+      WHERE u.deleted_at IS NULL
+        AND ($1::text IS NULL OR lower(coalesce(u.name, '')) LIKE $1 OR lower(coalesce(u.email, '')) LIKE $1 OR ($2::text <> '' AND u.phone LIKE '%' || $2 || '%'))
+      ORDER BY u.created_at DESC LIMIT 300`,
+    [q, digits],
+  );
+}
+
+/**
+ * Delete a user. Someone with no paid or taken orders is removed completely (their open orders, trips,
+ * documents and files go too). Someone with money history is anonymised: name, phone, email and card are wiped,
+ * the account can no longer sign in, and the phone number is free to register again. Orders, payouts and the
+ * driver's tax details stay, because accounting and the CRA report need them.
+ */
+export async function deleteUser(ctx: Ctx, adminId: string, userId: string): Promise<{ mode: 'deleted' | 'anonymised' }> {
+  if (userId === adminId) throw bad('cannot_delete_self', 'You cannot delete your own account');
+  const u = await maybeOne<{ id: string; phone: string; is_admin: boolean; deleted_at: string | null }>(ctx.db, 'SELECT id, phone, is_admin, deleted_at FROM users WHERE id = $1', [userId]);
+  if (!u || u.deleted_at) throw notFound('User not found');
+  if (u.is_admin) throw bad('cannot_delete_admin', 'This is an admin account. Remove the phone from ADMIN_PHONES first');
+  const active = await ctx.db.query<{ number: number }>(
+    `SELECT number FROM orders WHERE (client_id = $1 OR driver_id = $1) AND status IN ('agreed', 'picked_up', 'in_transit') ORDER BY number`,
+    [userId],
+  );
+  if (active.length) throw conflict('active_orders', `This user has orders in progress (${active.map((o) => '#' + o.number).join(', ')}). Finish or cancel them first`);
+  // money history: anything a driver took or a card was charged for
+  const history = await ctx.db.query<{ n: number }>(
+    `SELECT count(*)::int AS n FROM orders WHERE driver_id = $1 OR (client_id = $1 AND (driver_id IS NOT NULL OR charged_cents IS NOT NULL))`,
+    [userId],
+  );
+  const files = (await ctx.db.query<{ file_key: string }>('SELECT file_key FROM documents WHERE driver_id = $1', [userId])).map((f) => f.file_key);
+  const common = async (q: Queryable) => {
+    await q.query(`UPDATE orders SET requested_driver_id = NULL WHERE requested_driver_id = $1`, [userId]);
+    await q.query(`DELETE FROM offers WHERE driver_id = $1 AND status = 'pending'`, [userId]);
+    await q.query(`UPDATE trips SET status = 'cancelled' WHERE driver_id = $1 AND status = 'active'`, [userId]);
+  };
+  let mode: 'deleted' | 'anonymised' = 'anonymised';
+  if (!history[0]?.n) {
+    try {
+      await ctx.db.tx(async (q) => {
+        await common(q);
+        await q.query('DELETE FROM orders WHERE client_id = $1', [userId]); // only open or cancelled-before-a-driver orders are left
+        await q.query('DELETE FROM offers WHERE driver_id = $1', [userId]);
+        await q.query('UPDATE order_events SET actor_id = NULL WHERE actor_id = $1', [userId]);
+        await q.query('UPDATE messages SET sender_id = NULL WHERE sender_id = $1', [userId]);
+        await q.query('UPDATE audit_log SET actor_id = NULL WHERE actor_id = $1', [userId]);
+        await q.query('UPDATE trips SET vehicle_id = NULL WHERE driver_id = $1', [userId]);
+        await q.query('DELETE FROM otp_codes WHERE phone = $1', [u.phone]);
+        await q.query('DELETE FROM users WHERE id = $1', [userId]);
+      });
+      mode = 'deleted';
+    } catch (e) {
+      ctx.log('user delete fell back to anonymising', { userId, err: String(e) });
+    }
+  }
+  if (mode === 'anonymised') {
+    await ctx.db.tx(async (q) => {
+      await common(q);
+      await q.query(
+        `UPDATE orders SET status = 'cancelled', cancelled_at = now(), cancel_reason = 'Account deleted' WHERE client_id = $1 AND status = 'open'`,
+        [userId],
+      );
+      await q.query(
+        `UPDATE users SET phone = 'deleted:' || id::text, name = 'Deleted user', email = NULL, email_verified_at = NULL, email_token_hash = NULL,
+           email_alerts = false, stripe_customer_id = NULL, payment_method_id = NULL, card_brand = NULL, card_last4 = NULL,
+           blocked = true, deleted_at = now()
+         WHERE id = $1`,
+        [userId],
+      );
+      await q.query(`UPDATE drivers SET status = 'rejected', paused_reason = 'Account deleted', address = NULL WHERE user_id = $1`, [userId]);
+      await q.query('DELETE FROM documents WHERE driver_id = $1', [userId]);
+      await q.query('DELETE FROM push_tokens WHERE user_id = $1', [userId]);
+      await q.query('DELETE FROM notifications WHERE user_id = $1', [userId]);
+      await q.query('DELETE FROM route_alerts WHERE user_id = $1', [userId]);
+      await q.query('DELETE FROM otp_codes WHERE phone = $1', [u.phone]);
+    });
+  }
+  if (ctx.storage.kind === 'db' && files.length) await ctx.db.query('DELETE FROM stored_files WHERE key = ANY($1::text[])', [files]).catch(() => undefined);
+  await ctx.db.query(`INSERT INTO audit_log(actor_id, action, target, data) VALUES ($1, 'user_deleted', $2, $3)`, [adminId, userId, { mode }]);
+  return { mode };
 }
 
 const csv = (v: unknown) => {

@@ -89,7 +89,7 @@ function SetupPage() {
       <Card hl={d.status === 'approved'}>
         <div className="row between">
           <b>{t(`ds_${d.status}`)}</b>
-          <span className="row"><Pill tone={statusTone}>{t(`tier_${d.tier}`)}</Pill><span className="small muted">{t('cargoLimit', { amount: money(d.cargoLimitCents) })}</span></span>
+          <span className="row"><Pill tone={statusTone}>{t(`tier_${d.tier}`)}</Pill><span className="small muted">{d.tier === 'pro' ? t('cargoNoLimit') : t('cargoLimit', { amount: money(d.cargoLimitCents) })}</span></span>
         </div>
         {d.pausedReason ? <p className="small">{d.pausedReason}</p> : null}
         {d.status === 'pending' ? <p className="small muted">{t('pendingNote')}</p> : null}

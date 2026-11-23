@@ -295,6 +295,7 @@ export const uk: Partial<Dict> = {
   tier_basic: "Basic",
   tier_pro: "Pro",
   cargoLimit: "Ліміт вартості вантажу {amount}",
+  cargoNoLimit: "Без обмеження вартості вантажу",
   myTrips: "Мої поїздки",
   tripsIntro: "Опублікуйте поїздку, яку робите. Ми покажемо вантажі по дорозі й повідомимо відправників на цьому маршруті.",
   newTrip: "Опублікувати поїздку",

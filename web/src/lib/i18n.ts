@@ -290,6 +290,7 @@ const en = {
   missing: 'Still needed: {list}',
   tier_basic: 'Basic', tier_pro: 'Pro',
   cargoLimit: 'Cargo value limit {amount}',
+  cargoNoLimit: 'No limit on item value',
 
   myTrips: 'My trips',
   tripsIntro: 'Post a trip you are making. We show loads along the way and tell shippers on that route.',
@@ -758,6 +759,7 @@ const ru: Dict = {
   missing: 'Осталось: {list}',
   tier_basic: 'Basic', tier_pro: 'Pro',
   cargoLimit: 'Лимит стоимости груза {amount}',
+  cargoNoLimit: 'Без ограничения стоимости груза',
 
   myTrips: 'Мои поездки',
   tripsIntro: 'Опубликуйте поездку, которую вы совершаете. Покажем грузы по пути и сообщим о вас тем, кто отправляет по этому маршруту.',

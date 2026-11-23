@@ -58,7 +58,7 @@ test('cancellation split by timing', () => {
 test('cargo limits: basic $1,000, $5,000 with order insurance; Pro by policy', () => {
   assert.equal(cargoLimitCents({ tier: 'basic', cargoLimitCents: 0 }, false, rules), 100000);
   assert.equal(cargoLimitCents({ tier: 'basic', cargoLimitCents: 0 }, true, rules), 500000);
-  assert.equal(cargoLimitCents({ tier: 'pro', cargoLimitCents: 2500000 }, false, rules), 2500000);
+  assert.equal(cargoLimitCents({ tier: 'pro', cargoLimitCents: 2500000 }, false, rules), Number.POSITIVE_INFINITY);
 });
 
 test('chat filter hides phones, emails, links and messengers but keeps normal text', () => {

@@ -177,6 +177,71 @@ function Drivers({ openId }: { openId?: string }) {
   );
 }
 
+// ---------------------------------------------------------------- users
+
+/** Ask, then delete. Returns a message for the toast, or null when the admin changed their mind. */
+async function deleteUserFlow(u: { id: string; name: string | null; phone: string }): Promise<{ text: string; ok: boolean } | null> {
+  const who = `${u.name ?? 'No name'} (${u.phone})`;
+  if (!confirm(`Delete ${who}?\n\nIf this person has paid or taken orders, their name, phone, email and card are wiped and the account is closed; the orders and tax records stay for accounting. Otherwise everything is removed. This cannot be undone.`)) return null;
+  try {
+    const r = await api<{ mode: string }>('DELETE', `/v1/admin/users/${u.id}`);
+    return { ok: true, text: r.mode === 'deleted' ? `${who}: deleted completely` : `${who}: personal data wiped, account closed (has order history, kept for accounting)` };
+  } catch (e) {
+    return { ok: false, text: (e as Error).message };
+  }
+}
+
+function Users() {
+  const [q, setQ] = useState('');
+  const [search, setSearch] = useState('');
+  const { data, error, reload } = useData(() => api<any[]>('GET', `/v1/admin/users${search ? `?q=${encodeURIComponent(search)}` : ''}`), [search]);
+  const [msg, setMsg] = useState<{ text: string; ok: boolean } | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
+  useEffect(() => {
+    if (!msg) return;
+    const t = setTimeout(() => setMsg(null), 6000);
+    return () => clearTimeout(t);
+  }, [msg]);
+  return (
+    <section>
+      <h2>Users</h2>
+      <form className="row" onSubmit={(e) => { e.preventDefault(); setSearch(q); }}>
+        <label className="grow">Search by name, phone or email <input id="user-search" value={q} onChange={(e) => setQ(e.target.value)} /></label>
+        <button type="submit">Search</button>
+      </form>
+      {error ? <p className="error">{error}</p> : null}
+      <div className="table-wrap">
+        <table>
+          <thead><tr><th>Name</th><th>Phone</th><th>Email</th><th>Driver</th><th className="num">Orders</th><th className="num">Jobs</th><th>Joined</th><th></th></tr></thead>
+          <tbody>
+            {data?.map((u) => (
+              <tr key={u.id} data-user={u.phone}>
+                <td>{u.name ?? '—'} {u.is_admin ? <Pill tone="done">admin</Pill> : null} {u.blocked ? <Pill tone="bad">blocked</Pill> : null}</td>
+                <td>{u.phone}</td>
+                <td>{u.email ?? '—'}</td>
+                <td>{u.driver_status ? <a href={`#drivers/${u.id}`}><Pill tone={STATUS_TONE[u.driver_status]}>{u.driver_status}</Pill> {u.driver_tier}</a> : '—'}</td>
+                <td className="num">{u.orders}</td>
+                <td className="num">{u.jobs}</td>
+                <td>{dt(u.created_at)}</td>
+                <td>{u.is_admin ? null : (
+                  <button className="danger delete-user" disabled={busy === u.id} onClick={async () => {
+                    setBusy(u.id);
+                    const r = await deleteUserFlow(u);
+                    setBusy(null);
+                    if (r) { setMsg(r); if (r.ok) reload(); }
+                  }}>Delete</button>
+                )}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {data && data.length === 0 ? <p className="muted">Nobody found.</p> : null}
+      {msg ? <div className={`toast-admin ${msg.ok ? 'ok' : 'bad'}`} role="status">{msg.text}</div> : null}
+    </section>
+  );
+}
+
 const CHECK_LABEL: Record<string, string> = {
   profile: 'Personal details', vehicle: 'Vehicle', vehicle_photos: 'Vehicle photos (side + rear with plate)', license: "Driver's licence (both sides)", registration: 'Vehicle registration',
   delivery_insurance: 'Insurance covering deliveries', identity: 'ID check started', identity_verified: 'ID verified by Stripe',
@@ -294,21 +359,26 @@ function DriverDetail({ id, onChange }: { id: string; onChange: () => void }) {
         ) : <p className="ok">Everything is in place: the driver can be approved.</p>}
         <div className="row">
           <label>Level <select id="tier" value={tier} onChange={(e) => setTier(e.target.value)}><option value="basic">Basic</option><option value="pro">Pro</option></select></label>
-          <label>Cargo limit, $ <input id="cargo" value={cargo} onChange={(e) => setCargo(e.target.value)} size={8} /></label>
+          {tier === 'pro' ? <span className="small muted">Pro: no cargo value limit</span> : <label>Cargo limit, $ <input id="cargo" value={cargo} onChange={(e) => setCargo(e.target.value)} size={8} /></label>}
           <label className="grow">Reason / note <input id="reason" value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Shown to the driver when rejecting a document, rejecting or pausing" /></label>
         </div>
         <div className="row">
           <button className="primary" id="approve-all" disabled={busy || afterAcceptAll.length > 0} title={afterAcceptAll.length ? 'Not possible yet: ' + afterAcceptAll.map((k) => CHECK_LABEL[k] ?? k).join(', ') : ''}
-            onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/approve-all`, { tier, cargoLimitCents: cargoCents }), 'Approved')}>
+            onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/approve-all`, { tier, ...(tier === 'pro' ? {} : { cargoLimitCents: cargoCents }) }), 'Approved')}>
             Accept all documents & approve
           </button>
-          <button id="approve" disabled={busy || missing.length > 0} onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/decision`, { status: 'approved', tier, cargoLimitCents: cargoCents }), 'Approved')}>Approve</button>
+          <button id="approve" disabled={busy || missing.length > 0} onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/decision`, { status: 'approved', tier, ...(tier === 'pro' ? {} : { cargoLimitCents: cargoCents }) }), 'Approved')}>Approve</button>
           <button disabled={busy} onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/decision`, { status: 'paused', ...(reason ? { reason } : {}) }), 'Paused')}>Pause</button>
           <button className="danger" disabled={busy} onClick={() => act(() => api('POST', `/v1/admin/drivers/${id}/decision`, { status: 'rejected', ...(reason ? { reason } : {}) }), 'Rejected')}>Reject driver</button>
           <button disabled={busy} onClick={() => act(() => api('POST', `/v1/admin/users/${id}/block`, { blocked: true }), 'Account blocked')}>Block account</button>
+          <button className="danger" id="delete-user" disabled={busy} onClick={async () => {
+            const r = await deleteUserFlow({ id, name: data.driver?.legalName ?? data.user?.name ?? null, phone: data.user?.phone ?? '' });
+            if (!r) return;
+            if (r.ok) { onChange(); location.hash = '#users'; } else setMsg(r);
+          }}>Delete user</button>
         </div>
         {afterAcceptAll.length && missing.length ? <p className="small muted">“Accept all” cannot fix: {afterAcceptAll.map((k) => CHECK_LABEL[k] ?? k).join(', ')}. The driver has to complete these.</p> : null}
-        <p className="small muted">Basic: $1,000 cargo limit ($5,000 when the customer buys cargo insurance). Pro: commercial auto + cargo policy; the cargo limit should not exceed the cargo policy.</p>
+        <p className="small muted">Basic: $1,000 cargo limit ($5,000 when the customer buys cargo insurance); a personal auto policy alone is always capped at $1,000. Pro: commercial auto + cargo policy, takes any order with no cargo value limit.</p>
         {msg ? <p className={msg.ok ? 'ok' : 'error'} role="status">{msg.text}</p> : null}
       </div>
       {msg ? <div className={`toast-admin ${msg.ok ? 'ok' : 'bad'}`} role="status">{msg.text}</div> : null}
@@ -521,7 +591,7 @@ function App() {
   }, []);
   if (!signedIn) return <SignIn onDone={() => setSignedIn(true)} />;
   const [page, id] = hash.slice(1).split('/');
-  const nav: [string, string][] = [['overview', 'Overview'], ['drivers', 'Drivers'], ['orders', 'Orders'], ['disputes', 'Disputes'], ['reports', 'Reports']];
+  const nav: [string, string][] = [['overview', 'Overview'], ['users', 'Users'], ['drivers', 'Drivers'], ['orders', 'Orders'], ['disputes', 'Disputes'], ['reports', 'Reports']];
   return (
     <>
       <header>
@@ -530,7 +600,7 @@ function App() {
         <button className="ghost" onClick={() => { token = null; try { localStorage.removeItem(TOKEN_KEY); } catch { /* ignore */ } setSignedIn(false); }}>Sign out</button>
       </header>
       <main>
-        {page === 'drivers' ? <Drivers openId={id} /> : page === 'orders' ? <Orders openId={id} /> : page === 'disputes' ? <Disputes /> : page === 'reports' ? <Reports /> : <Dashboard />}
+        {page === 'users' ? <Users /> : page === 'drivers' ? <Drivers openId={id} /> : page === 'orders' ? <Orders openId={id} /> : page === 'disputes' ? <Disputes /> : page === 'reports' ? <Reports /> : <Dashboard />}
       </main>
     </>
   );

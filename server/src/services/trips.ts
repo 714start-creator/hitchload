@@ -6,7 +6,7 @@ import { one } from '../db/db.js';
 import { CITIES, findCity } from '../data/cities.js';
 import { bad, conflict, notFound } from '../lib/errors.js';
 import { matchRoute, type Point, type Stop } from '../lib/geo.js';
-import { tripPriceCents, type Size } from '../lib/pricing.js';
+import { cargoLimitCents, tripPriceCents, type Size } from '../lib/pricing.js';
 import { getDriver } from './drivers.js';
 import { firstName, rating } from './dto.js';
 
@@ -115,7 +115,7 @@ export async function matchTrips(
   for (const t of rows) {
     if (t.driver_id === q.excludeDriver) continue;
     if (!sizeFits(q.size, t.max_size)) continue;
-    const limit = t.tier === 'pro' ? t.cargo_limit_cents : q.insured ? r.basicInsuredCargoLimitCents : r.basicCargoLimitCents;
+    const limit = cargoLimitCents({ tier: t.tier, cargoLimitCents: t.cargo_limit_cents }, q.insured ?? false, r);
     if (q.declaredValueCents > limit) continue;
     const m = matchRoute(t.stops, q.pickup, q.dropoff, r.stopMatchKm, r.roadFactor);
     if (!m) continue;

@@ -103,7 +103,8 @@ export function cargoLimitCents(
   orderInsured: boolean,
   rules: Config['rules'],
 ): number {
-  if (driver.tier === 'pro') return driver.cargoLimitCents;
+  // Pro drivers take any order, whatever the item is worth
+  if (driver.tier === 'pro') return Number.POSITIVE_INFINITY;
   return orderInsured ? rules.basicInsuredCargoLimitCents : rules.basicCargoLimitCents;
 }
 

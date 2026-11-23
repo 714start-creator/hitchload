@@ -269,6 +269,8 @@ export function buildRouter(ctx: Ctx): Router {
   r.get('/v1/admin/orders/:id', async (req) => admin.adminOrder(ctx, id(req)), A);
   r.get('/v1/admin/disputes', async (req) => admin.adminDisputes(ctx, req.query.get('status') === 'resolved' ? 'resolved' : 'open'), A);
   r.post('/v1/admin/disputes/:id/resolve', async (req) => support.resolveDispute(ctx, uid(req), id(req), parse(support.resolveSchema, req.body)), A);
+  r.get('/v1/admin/users', async (req) => admin.adminUsers(ctx, req.query.get('q') ?? undefined), A);
+  r.delete('/v1/admin/users/:id', async (req) => admin.deleteUser(ctx, uid(req), id(req)), A);
   r.post('/v1/admin/users/:id/block', async (req) => {
     await admin.setUserBlocked(ctx, uid(req), id(req), parse(z.object({ blocked: z.boolean() }), req.body).blocked);
     return { ok: true };

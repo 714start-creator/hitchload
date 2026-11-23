@@ -295,6 +295,7 @@ export const pa: Partial<Dict> = {
   tier_basic: "Basic",
   tier_pro: "Pro",
   cargoLimit: "ਮਾਲ ਦੀ ਕੀਮਤ ਦੀ ਹੱਦ {amount}",
+  cargoNoLimit: "ਮਾਲ ਦੀ ਕੀਮਤ ’ਤੇ ਕੋਈ ਹੱਦ ਨਹੀਂ",
   myTrips: "ਮੇਰੇ ਸਫ਼ਰ",
   tripsIntro: "ਉਹ ਸਫ਼ਰ ਪੋਸਟ ਕਰੋ ਜੋ ਤੁਸੀਂ ਕਰ ਰਹੇ ਹੋ। ਅਸੀਂ ਰਸਤੇ ਦੇ ਮਾਲ ਦਿਖਾਉਂਦੇ ਹਾਂ ਅਤੇ ਉਸ ਰੂਟ ਦੇ ਭੇਜਣ ਵਾਲਿਆਂ ਨੂੰ ਦੱਸਦੇ ਹਾਂ।",
   newTrip: "ਸਫ਼ਰ ਪੋਸਟ ਕਰੋ",

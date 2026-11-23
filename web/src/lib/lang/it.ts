@@ -295,6 +295,7 @@ export const it: Partial<Dict> = {
   tier_basic: "Basic",
   tier_pro: "Pro",
   cargoLimit: "Limite di valore della merce {amount}",
+  cargoNoLimit: "Nessun limite di valore della merce",
   myTrips: "I miei viaggi",
   tripsIntro: "Pubblica un viaggio che fai. Mostriamo i carichi lungo la strada e avvisiamo i mittenti su quel percorso.",
   newTrip: "Pubblica un viaggio",

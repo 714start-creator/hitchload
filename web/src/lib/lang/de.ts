@@ -295,6 +295,7 @@ export const de: Partial<Dict> = {
   tier_basic: "Basic",
   tier_pro: "Pro",
   cargoLimit: "Wertgrenze für Ladung {amount}",
+  cargoNoLimit: "Keine Wertgrenze für Ladung",
   myTrips: "Meine Fahrten",
   tripsIntro: "Veröffentlichen Sie eine Fahrt, die Sie machen. Wir zeigen Ladungen auf dem Weg und informieren Versender auf dieser Strecke.",
   newTrip: "Fahrt veröffentlichen",

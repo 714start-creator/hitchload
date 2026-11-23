@@ -427,7 +427,7 @@ export async function setBackgroundStatus(ctx: Ctx, adminId: string, userId: str
 export async function adminListDrivers(ctx: Ctx, status?: string) {
   const rows = await ctx.db.query<DriverRow & { phone: string; name: string | null; rating_sum: number; rating_count: number }>(
     `SELECT d.*, u.phone, u.name, u.rating_sum, u.rating_count FROM drivers d JOIN users u ON u.id = d.user_id
-     WHERE ($1::text IS NULL OR d.status::text = $1) ORDER BY coalesce(d.submitted_at, d.created_at) DESC LIMIT 200`,
+     WHERE u.deleted_at IS NULL AND ($1::text IS NULL OR d.status::text = $1) ORDER BY coalesce(d.submitted_at, d.created_at) DESC LIMIT 200`,
     [status ?? null],
   );
   return rows.map((r) => ({ userId: r.user_id, phone: r.phone, name: r.name, ...driverSelfDto(r), rating: r.rating_count ? r.rating_sum / r.rating_count : null }));
