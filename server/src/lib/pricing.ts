@@ -105,7 +105,9 @@ export function cargoLimitCents(
 ): number {
   // Pro drivers take any order, whatever the item is worth
   if (driver.tier === 'pro') return Number.POSITIVE_INFINITY;
-  return orderInsured ? rules.basicInsuredCargoLimitCents : rules.basicCargoLimitCents;
+  // Basic: the driver's own limit (set on approval: $1,000 by default, $2,500 with a personal policy);
+  // when the customer insures the item, at least the insured limit
+  return orderInsured ? Math.max(driver.cargoLimitCents, rules.basicInsuredCargoLimitCents) : driver.cargoLimitCents;
 }
 
 export const fmtCad = (cents: number) => `$${(cents / 100).toFixed(2)}`;

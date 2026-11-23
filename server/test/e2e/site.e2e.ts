@@ -253,7 +253,7 @@ test('a new driver completes the application on the website', async () => {
   await p.locator('.checks li.done', { hasText: 'Vehicle photos: side and rear' }).waitFor();
   // personal auto policy: accepted only with the risk acknowledgement
   await p.selectOption('#ins-kind', 'insurance_auto');
-  await p.getByText('With a personal auto policy (Basic) you can take items worth up to $1,000').waitFor();
+  await p.getByText('With a personal auto policy (Basic) you can take items worth up to $2,500').waitFor();
   await p.click('#ins-save');
   await p.locator('[data-field=riskAck].invalid', { hasText: 'Tick this box to use a personal policy' }).waitFor();
   await p.locator('[data-field=insurer].invalid').waitFor();

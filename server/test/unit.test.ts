@@ -56,8 +56,9 @@ test('cancellation split by timing', () => {
 });
 
 test('cargo limits: basic $1,000, $5,000 with order insurance; Pro by policy', () => {
-  assert.equal(cargoLimitCents({ tier: 'basic', cargoLimitCents: 0 }, false, rules), 100000);
-  assert.equal(cargoLimitCents({ tier: 'basic', cargoLimitCents: 0 }, true, rules), 500000);
+  assert.equal(cargoLimitCents({ tier: 'basic', cargoLimitCents: 100000 }, false, rules), 100000);
+  assert.equal(cargoLimitCents({ tier: 'basic', cargoLimitCents: 100000 }, true, rules), 500000);
+  assert.equal(cargoLimitCents({ tier: 'basic', cargoLimitCents: 250000 }, false, rules), 250000); // personal policy
   assert.equal(cargoLimitCents({ tier: 'pro', cargoLimitCents: 2500000 }, false, rules), Number.POSITIVE_INFINITY);
 });
 

@@ -181,10 +181,20 @@ test('a personal auto policy is accepted for Basic only with the driver\'s risk 
   assert.equal(ck(before, 'vehicle_photos'), true);
   assert.equal(ck(before, 'background_clear'), false);
   assert.ok(before.documents.find((d: { kind: string }) => d.kind === 'insurance_auto').riskAcknowledgedAt);
-  // whatever the admin types, a personal policy alone caps the item value at $1,000
+  // whatever the admin types, a personal policy alone caps the item value at $2,500
   const done = await admin.api.post(`/v1/admin/drivers/${p.id}/approve-all`, { tier: 'basic', cargoLimitCents: 500000 });
   assert.equal(done.driver.status, 'approved');
-  assert.equal(done.driver.cargoLimitCents, 100000);
+  assert.equal(done.driver.cargoLimitCents, 250000);
+  // and it can take a $2,400 item, not a $2,600 one
+  const buyer = await customer(app, '7805550936', 'Bella Buyer');
+  const ok = await buyer.api.post('/v1/orders', { pickup: places.whyteAve, dropoff: places.kensington, size: 'M', declaredValueCents: 240000, insured: false, windowStart: hours(2), windowEnd: hours(8), priceCents: 9000 });
+  const tooMuch = await buyer.api.post('/v1/orders', { pickup: places.whyteAve, dropoff: places.kensington, size: 'M', declaredValueCents: 260000, insured: false, windowStart: hours(2), windowEnd: hours(8), priceCents: 9000 });
+  app.advance(31 * 60_000); // intercity: past the Pro window
+  const feed = (await p.api.get('/v1/driver/feed?scope=all')).items as { id: string; eligibility: { canTake: boolean; lockReason?: string } }[];
+  assert.equal(feed.find((i) => i.id === ok.id)!.eligibility.canTake, true, JSON.stringify(feed.find((i) => i.id === ok.id)));
+  assert.equal(feed.find((i) => i.id === tooMuch.id)!.eligibility.lockReason, 'cargo_limit');
+  await buyer.api.post(`/v1/orders/${ok.id}/cancel`);
+  await buyer.api.post(`/v1/orders/${tooMuch.id}/cancel`);
   assert.equal(ck(done, 'background_clear'), true, 'accepting the record-check document marks it clear');
 });
 

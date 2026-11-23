@@ -16,8 +16,8 @@ export type DocKind = (typeof DOC_KINDS)[number];
 const INSURANCE_KINDS: DocKind[] = ['insurance_auto', 'insurance_endorsement', 'insurance_commercial', 'insurance_cargo', 'insurance_car_hauling'];
 /** A policy that covers driving for pay. A personal policy counts only with the driver's risk acknowledgement (see hasDeliveryCover). */
 const DELIVERY_COVER: DocKind[] = ['insurance_endorsement', 'insurance_commercial'];
-/** Drivers whose only cover is a personal auto policy take items worth up to this much. */
-export const PERSONAL_POLICY_LIMIT_CENTS = 100_000;
+/** Basic drivers whose only cover is a personal auto policy take items worth up to this much. */
+export const PERSONAL_POLICY_LIMIT_CENTS = 250_000;
 
 export interface DocRow {
   id: string;
@@ -378,10 +378,12 @@ export async function decideDriver(ctx: Ctx, adminId: string, userId: string, p:
   }
   const tier = p.tier ?? o.driver.tier;
   let cargoLimit = p.cargoLimitCents ?? (tier === 'pro' ? Math.max(o.driver.cargoLimitCents, maxCoverage(o.documents, 'insurance_cargo')) : ctx.cfg.rules.basicCargoLimitCents);
-  // a personal auto policy alone: items up to $1,000, whatever was typed in admin
+  // a personal auto policy alone: items up to $2,500 (the default for such drivers), never more
   const today = ctx.now().toISOString().slice(0, 10);
   const deliveryCover = o.documents.some((d) => DELIVERY_COVER.includes(d.kind as DocKind) && d.status !== 'rejected' && (!d.expiresOn || d.expiresOn >= today));
-  if (!deliveryCover && o.documents.some((d) => d.kind === 'insurance_auto' && d.status !== 'rejected')) cargoLimit = Math.min(cargoLimit, PERSONAL_POLICY_LIMIT_CENTS);
+  if (!deliveryCover && o.documents.some((d) => d.kind === 'insurance_auto' && d.status !== 'rejected')) {
+    cargoLimit = tier === 'basic' && p.cargoLimitCents === undefined ? PERSONAL_POLICY_LIMIT_CENTS : Math.min(cargoLimit, PERSONAL_POLICY_LIMIT_CENTS);
+  }
   await ctx.db.query(
     `UPDATE drivers SET status = $2::driver_status, tier = $3, car_hauler = coalesce($4, car_hauler), cargo_limit_cents = $5,
        approved_at = CASE WHEN $2::driver_status = 'approved' THEN coalesce(approved_at, now()) ELSE approved_at END,
